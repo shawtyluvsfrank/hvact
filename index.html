@@ -76,7 +76,7 @@ async function dbGet(token){
   });
 }
 function toRow(unit){
-  return {id:unit.id,serial_number:unit.serialNumber,make:unit.make,model:unit.model,floor:unit.floor,location:unit.location,status:unit.status,pm_status:unit.pmStatus,last_pm:unit.lastPM,next_pm:unit.nextPM,install_date:unit.installDate,notes:unit.notes,photo_base64:unit.photoBase64||null,diagram_base64:unit.diagramBase64||null,created_at:unit.createdAt,logs:unit.logs||[],specs:JSON.stringify({volts:unit.volts,hz:unit.hz,compRLA:unit.compRLA,lra:unit.lra,evapFanAmps:unit.evapFanAmps,refrigerantType:unit.refrigerantType,totalCharge:unit.totalCharge,highSidePSI:unit.highSidePSI,lowSidePSI:unit.lowSidePSI})};
+  return {id:unit.id,serial_number:unit.serialNumber,make:unit.make,model:unit.model,floor:unit.floor,location:unit.location,status:unit.status,pm_status:unit.pmStatus,last_pm:unit.lastPM,next_pm:unit.nextPM,install_date:unit.installDate,notes:unit.notes,photo_base64:unit.photoBase64||null,diagram_base64:unit.diagramBase64||null,created_at:unit.createdAt,logs:unit.logs||[],specs:JSON.stringify({zone:unit.zone||"",volts:unit.volts,hz:unit.hz,compRLA:unit.compRLA,lra:unit.lra,evapFanAmps:unit.evapFanAmps,refrigerantType:unit.refrigerantType,totalCharge:unit.totalCharge,highSidePSI:unit.highSidePSI,lowSidePSI:unit.lowSidePSI})};
 }
 async function dbSave(token,unit){
   token=await getValidToken()||token;
