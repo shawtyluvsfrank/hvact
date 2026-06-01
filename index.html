@@ -1,512 +1,822 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HVAC Tracker</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0a0a; color: #e5e5e5; font-family: 'Courier New', monospace; }
-    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #111; } ::-webkit-scrollbar-thumb { background: #333; }
-    input, select, textarea, button { font-family: 'Courier New', monospace; }
-    select option { background: #111; color: #e5e5e5; }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>HVACT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;color:#e5e5e5;font-family:'Courier New',monospace}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#333}
+input,select,textarea,button{font-family:'Courier New',monospace}
+select option{background:#111;color:#e5e5e5}
+</style>
 </head>
-<body>
-<div id="root"></div>
+<body><div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const {useState,useEffect,useCallback}=React;
+const ANT_KEY="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";
 
-const SUPABASE_URL = "https://ynaqtoxugyysifnnvahv.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluYXF0b3h1Z3l5c2lmbm52YWh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDA0MzcsImV4cCI6MjA5NDg3NjQzN30.hNMgE65j26FtS1HD8L58T5kjogCJtcdP0WY4-6DC4ugn";
-const ANTHROPIC_KEY = "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";
-const HEADERS = { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY, "Prefer": "return=representation", "Accept": "application/json" };
-
-async function dbGetUnits() {
-  const r = await fetch(SUPABASE_URL + "/rest/v1/units?order=created_at.asc", { headers: HEADERS });
-  if (!r.ok) throw new Error(await r.text());
-  const rows = await r.json();
-  return rows.map(row => ({ id: row.id, serialNumber: row.serial_number, make: row.make, model: row.model, floor: row.floor, location: row.location, status: row.status, pmStatus: row.pm_status, lastPM: row.last_pm, nextPM: row.next_pm, installDate: row.install_date, notes: row.notes, photoBase64: row.photo_base64, diagramBase64: row.diagram_base64, createdAt: row.created_at, logs: row.logs || [] }));
+// Auth
+async function authSignUp(email,password,name,role){
+  const r=await fetch("/supabase/auth/v1/signup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password,data:{name,role}})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.msg||"Signup failed");return d;
+}
+async function authSignIn(email,password){
+  const r=await fetch("/supabase/auth/v1/token?grant_type=password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.msg||"Login failed");return d;
+}
+async function authSignOut(token){await fetch("/supabase/auth/v1/logout",{method:"POST",headers:{"Authorization":"Bearer "+token}});}
+async function authGetUser(token){
+  const r=await fetch("/supabase/auth/v1/user",{headers:{"Authorization":"Bearer "+token}});
+  return r.ok?r.json():null;
 }
 
-async function dbSaveUnit(unit) {
-  const row = { id: unit.id, serial_number: unit.serialNumber, make: unit.make, model: unit.model, floor: unit.floor, location: unit.location, status: unit.status, pm_status: unit.pmStatus, last_pm: unit.lastPM, next_pm: unit.nextPM, install_date: unit.installDate, notes: unit.notes, photo_base64: unit.photoBase64 || null, diagram_base64: unit.diagramBase64 || null, created_at: unit.createdAt, logs: unit.logs || [] };
-  const r = await fetch(SUPABASE_URL + "/rest/v1/units", { method: "POST", headers: { ...HEADERS, "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(row) });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
+function getSession(){try{return JSON.parse(localStorage.getItem("hvac_sess")||"null")}catch(e){return null}}
+function saveSession(s){try{localStorage.setItem("hvac_sess",JSON.stringify(s))}catch(e){}}
+function clearSess(){try{localStorage.removeItem("hvac_sess")}catch(e){}}
+
+async function refreshSession(refreshToken){
+  const r=await fetch("/supabase/auth/v1/token?grant_type=refresh_token",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({refresh_token:refreshToken})
+  });
+  const d=await r.json();
+  if(!r.ok)throw new Error("Failed to refresh session");
+  saveSession(d);
+  return d;
 }
 
-async function dbUpdateUnit(unit) {
-  const row = { serial_number: unit.serialNumber, make: unit.make, model: unit.model, floor: unit.floor, location: unit.location, status: unit.status, pm_status: unit.pmStatus, last_pm: unit.lastPM, next_pm: unit.nextPM, install_date: unit.installDate, notes: unit.notes, photo_base64: unit.photoBase64 || null, diagram_base64: unit.diagramBase64 || null, logs: unit.logs || [] };
-  const r = await fetch(SUPABASE_URL + "/rest/v1/units?id=eq." + unit.id, { method: "PATCH", headers: HEADERS, body: JSON.stringify(row) });
-  if (!r.ok) throw new Error(await r.text());
+async function getValidToken(){
+  let sess=getSession();
+  if(!sess)return null;
+  // Refresh if token expires within 5 minutes
+  const exp=sess.expires_at||0;
+  const now=Math.floor(Date.now()/1000);
+  if(exp-now<300&&sess.refresh_token){
+    try{sess=await refreshSession(sess.refresh_token);}
+    catch(e){clearSess();return null;}
+  }
+  return sess.access_token||null;
 }
 
-async function dbDeleteUnit(id) {
-  const r = await fetch(SUPABASE_URL + "/rest/v1/units?id=eq." + id, { method: "DELETE", headers: HEADERS });
-  if (!r.ok) throw new Error(await r.text());
+// DB
+function hdrs(token){return{"Content-Type":"application/json","Authorization":"Bearer "+(token||""),"Accept":"application/json","X-User-Token":token||""}}
+async function dbGet(token){
+  token=await getValidToken()||token;
+  const r=await fetch("/supabase/rest/v1/units?order=created_at.asc",{headers:hdrs(token)});
+  if(!r.ok)throw new Error(await r.text());
+  return (await r.json()).map(function(row){
+    let sp={};try{sp=JSON.parse(row.specs||"{}")}catch(e){}
+    return {id:row.id,serialNumber:row.serial_number,make:row.make,model:row.model,floor:row.floor,location:row.location,status:row.status,pmStatus:row.pm_status,lastPM:row.last_pm,nextPM:row.next_pm,installDate:row.install_date,notes:row.notes,photoBase64:row.photo_base64||"",diagramBase64:row.diagram_base64||"",createdAt:row.created_at,logs:row.logs||[],zone:sp.zone||"",volts:sp.volts||"",hz:sp.hz||"",compRLA:sp.compRLA||"",lra:sp.lra||"",evapFanAmps:sp.evapFanAmps||"",refrigerantType:sp.refrigerantType||"",totalCharge:sp.totalCharge||"",highSidePSI:sp.highSidePSI||"",lowSidePSI:sp.lowSidePSI||""};
+  });
+}
+function toRow(unit){
+  return {id:unit.id,serial_number:unit.serialNumber,make:unit.make,model:unit.model,floor:unit.floor,location:unit.location,status:unit.status,pm_status:unit.pmStatus,last_pm:unit.lastPM,next_pm:unit.nextPM,install_date:unit.installDate,notes:unit.notes,photo_base64:unit.photoBase64||null,diagram_base64:unit.diagramBase64||null,created_at:unit.createdAt,logs:unit.logs||[],specs:JSON.stringify({volts:unit.volts,hz:unit.hz,compRLA:unit.compRLA,lra:unit.lra,evapFanAmps:unit.evapFanAmps,refrigerantType:unit.refrigerantType,totalCharge:unit.totalCharge,highSidePSI:unit.highSidePSI,lowSidePSI:unit.lowSidePSI})};
+}
+async function dbSave(token,unit){
+  token=await getValidToken()||token;
+  const r=await fetch("/supabase/rest/v1/units",{
+    method:"POST",
+    headers:Object.assign({},hdrs(token),{"Prefer":"resolution=merge-duplicates,return=representation"}),
+    body:JSON.stringify(toRow(unit))
+  });
+  if(!r.ok){
+    const txt=await r.text();
+    throw new Error(txt);
+  }
+  return r.json().catch(function(){return null});
+}
+async function dbUpdate(token,unit){
+  token=await getValidToken()||token;
+  const row=toRow(unit);
+  delete row.id;
+  delete row.created_at;
+  const r=await fetch("/supabase/rest/v1/units?id=eq."+unit.id,{
+    method:"PATCH",
+    headers:Object.assign({},hdrs(token),{"Prefer":"return=representation"}),
+    body:JSON.stringify(row)
+  });
+  if(!r.ok){const txt=await r.text();console.error("dbUpdate failed:",txt);throw new Error(txt);}
+  return r.json().catch(function(){return null});
+}
+async function dbDelete(token,id){token=await getValidToken()||token;
+  const r=await fetch("/supabase/rest/v1/units?id=eq."+id,{method:"DELETE",headers:Object.assign({},hdrs(token),{"Prefer":"return=representation"})});
+  if(!r.ok)throw new Error(await r.text());
 }
 
-const STATUS_COLORS = { Operational: "#22c55e", "Needs PM": "#f59e0b", "Under Repair": "#ef4444", "Out of Service": "#6b7280" };
-const PM_STATUS_COLORS = { Current: "#22c55e", "Due Soon": "#f59e0b", Overdue: "#ef4444" };
-const TYPE_COLORS = { PM: "#22c55e", Repair: "#ef4444", Inspection: "#3b82f6", Note: "#a855f7", Emergency: "#f97316", Refrigerant: "#06b6d4" };
-const UNIT_STATUS = ["Operational", "Needs PM", "Under Repair", "Out of Service"];
-const PM_STATUS = ["Current", "Due Soon", "Overdue"];
-const FLOORS = ["North Lobby","South Lobby","3S","4S","5S","5","6S","6","7S","7","8S","8","9","10","11","12","13","14","15","Rooftop","Mechanical Room","Other"];
-const LOG_TYPES = ["PM","Repair","Inspection","Refrigerant","Note","Emergency"];
+// Utils
+function addMonths(ds,n){const d=new Date(ds);d.setMonth(d.getMonth()+n);return d.toISOString().split("T")[0]}
+function fmtDate(ds){if(!ds)return"--";return new Date(ds).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"})}
+function localDate(){const d=new Date();const m=String(d.getMonth()+1).padStart(2,"0");const dy=String(d.getDate()).padStart(2,"0");return d.getFullYear()+"-"+m+"-"+dy}
+function getSavedBrands(){try{return JSON.parse(localStorage.getItem("hvac_brands")||"{}")}catch(e){return{}}}
+function saveBrand(make,model){const b=getSavedBrands();if(!b[make])b[make]=[];if(model&&!b[make].includes(model))b[make].push(model);try{localStorage.setItem("hvac_brands",JSON.stringify(b))}catch(e){}}
+function getAllMakes(){return Object.keys(getSavedBrands()).sort()}
+function getModels(make){return(getSavedBrands()[make]||[]).sort()}
+function compressImage(file,maxW){
+  return new Promise(function(res){
+    const img=new Image();const url=URL.createObjectURL(file);
+    img.onload=function(){
+      const scale=Math.min(1,maxW/img.width);
+      const c=document.createElement("canvas");
+      c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL("image/jpeg",0.80).split(",")[1]);
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);res(null)};
+    img.src=url;
+  });
+}
 
-function addMonths(dateStr, n) { const d = new Date(dateStr); d.setMonth(d.getMonth() + n); return d.toISOString().split("T")[0]; }
-function formatDate(ds) { if (!ds) return "—"; return new Date(ds).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }); }
-function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
+// Parts tracking
+const MANUALS=[
+  {name:"Series WMR Installation & Operation Manual",url:"https://williamshvac.com/wp-content/uploads/2022/07/Series-WMR-Installation-and-Operation-Manual.pdf",brand:"Williams HVAC"},
+  {name:"801-IOM Cold Point Corp Manual",url:"https://coldpointcorp.com/wp-content/uploads/2021/07/801-IOM_03-2020.pdf",brand:"Cold Point Corp"},
+  {name:"WC-IOM Installation & Operation Manual 2024",url:"https://www.coldpointcorp.com/wp-content/uploads/2024/12/WC-IOM-11-2024.pdf",brand:"Cold Point Corp"},
+];
+const PARTS=[
+  {key:"compressor",label:"Compressor",re:/compressor/i},
+  {key:"reversingValve",label:"Reversing Valve",re:/reversing valve/i},
+  {key:"capacitor",label:"Capacitor",re:/capacitor/i},
+  {key:"overload",label:"Overload Switch",re:/overload/i},
+  {key:"relay",label:"Relay",re:/\brelay\b/i},
+  {key:"thermostat",label:"Thermostat",re:/thermostat/i},
+  {key:"contactor",label:"Contactor",re:/contactor/i},
+  {key:"filter",label:"Filter",re:/\bfilter\b/i},
+  {key:"coil",label:"Coil",re:/\bcoil\b/i},
+  {key:"blower",label:"Blower Motor",re:/blower/i},
+];
+function countParts(logs){
+  const c={};
+  PARTS.forEach(function(p){c[p.key]=logs.filter(function(l){return l.type!=="PM"&&p.re.test(l.description)}).length});
+  return c;
+}
 
-function analyzePatterns(unit) {
-  const logs = unit.logs || [], alerts = [];
-  const repairs = logs.filter(l => l.type === "Repair");
-  const refrigerantLogs = logs.filter(l => l.type === "Refrigerant" || /leak|low pressure|refrigerant|freon|charge/i.test(l.description));
-  if (refrigerantLogs.length >= 2) alerts.push({ level:"critical", icon:"🔴", title:"RECURRING REFRIGERANT LEAK DETECTED", detail:`${refrigerantLogs.length} refrigerant/low-pressure events. Repeated recharging indicates an active leak.`, actions:["⛔ Do NOT recharge again — find and fix the leak.","🔧 Pull unit, perform nitrogen pressure test at shop.","📋 Coil/compressor leak → REPLACE UNIT. Fitting leak → repair at shop.","📝 Document all refrigerant additions (EPA Section 608)."] });
-  else if (refrigerantLogs.length === 1) alerts.push({ level:"warning", icon:"🟡", title:"LOW PRESSURE / REFRIGERANT EVENT LOGGED", detail:"One refrigerant event recorded. Monitor — a second occurrence indicates a leak.", actions:["✅ Check all fittings for oil (indicates leak point).","🧪 Use electronic leak detector at next PM.","📅 Recurs within 12 months → pull unit for shop repair."] });
-  if (repairs.length >= 3) { const sorted = [...repairs].sort((a,b) => new Date(a.date)-new Date(b.date)); const span = daysBetween(sorted[0].date, sorted[sorted.length-1].date); const perYear = span > 0 ? (repairs.length/(span/365)).toFixed(1) : repairs.length; alerts.push({ level: repairs.length >= 5 ? "critical" : "warning", icon: repairs.length >= 5 ? "🔴" : "🟡", title:`HIGH REPAIR FREQUENCY (${repairs.length} repairs, ~${perYear}/yr)`, detail:`Units averaging more than 2 repairs/year are not cost-effective to maintain.`, actions:["💰 Compare cumulative repair costs vs new unit cost.", repairs.length >= 5 ? "🚨 RECOMMEND: Budget for unit replacement." : "⚠️ Flag for supervisor review.","📊 Review logs for root cause."] }); }
-  const compressorLogs = logs.filter(l => /compressor/i.test(l.description));
-  if (compressorLogs.length >= 2) alerts.push({ level:"critical", icon:"🔴", title:"RECURRING COMPRESSOR ISSUES", detail:`${compressorLogs.length} compressor-related entries. Repairs cost 50-70% of a new unit.`, actions:["🚨 RECOMMEND UNIT REPLACEMENT over compressor repair.","🔌 Check electrical supply — voltage fluctuations cause failures.","🌡️ Verify refrigerant charge — low charge destroys compressors."] });
-  const electricalLogs = logs.filter(l => /capacitor|contactor|electrical|fuse|breaker|wiring|relay/i.test(l.description));
-  if (electricalLogs.length >= 2) alerts.push({ level:"warning", icon:"🟡", title:"RECURRING ELECTRICAL ISSUES", detail:`${electricalLogs.length} electrical component failures detected.`, actions:["⚡ Check supply voltage — should be within ±10% of nameplate.","🌡️ Inspect panel for heat damage or loose connections.","📅 Replace contactors and capacitors proactively at next PM."] });
-  if (unit.nextPM) { const daysOver = daysBetween(unit.nextPM, new Date().toISOString().split("T")[0]); if (daysOver > 30) alerts.push({ level:"warning", icon:"🟡", title:`PM OVERDUE BY ${daysOver} DAYS`, detail:"Deferred PMs dramatically increase failure risk.", actions:["📅 Schedule PM immediately.","🔍 Inspect filters, coils, and electrical components."] }); }
-  if (alerts.length === 0 && logs.length >= 2) alerts.push({ level:"good", icon:"✅", title:"NO RECURRING ISSUES DETECTED", detail:`${logs.length} log entries analyzed. Unit appears normal.`, actions:["Continue scheduled PM every 4 months.","Monitor refrigerant pressure at each PM."] });
+// Pattern analysis
+const SC={"Operational":"#22c55e","Needs PM":"#f59e0b","Under Repair":"#ef4444","Out of Service":"#6b7280","Ready for Install":"#3b82f6"};
+const PC={"Current":"#22c55e","Due Soon":"#f59e0b","Overdue":"#ef4444"};
+const TC={PM:"#22c55e",Repair:"#ef4444",Inspection:"#3b82f6",Note:"#a855f7",Emergency:"#f97316",Refrigerant:"#06b6d4"};
+const UNIT_STATUS=["Operational","Needs PM","Under Repair","Out of Service","Ready for Install"];
+const PM_LIST=["Current","Due Soon","Overdue"];
+const FLOORS=["North Lobby","South Lobby","3S","4S","5S","5","6S","6","7S","7","8S","8","9","10","11","12","13","14","15","Rooftop","Mechanical Room","Engineer Shop","Other"];
+
+const FLOOR_ZONES={
+  "15":["1555","1501"],
+  "14":["1475","1450","1425","1410","1400"],
+  "13":["1355","1301"],
+  "12":["1275","1250","1225","1210","1200"],
+  "11":["1150","1100"],
+  "10":["1055","1001"],
+  "9":["955","950","920","910","909","907","901"],
+  "8":["855","840","801"],
+  "8S":["580"],
+  "7":["755","701"],
+  "6":["600"],
+  "5":["524","520","515","512","510","505"],
+  "5S":["524","520","515","512","510","505"],
+  "P1":["P1"],"P2":["P2"],"P3":["P3"],"P4":["P4"],"P5":["P5"],
+  "North Lobby":[],"South Lobby":[],"3S":[],"4S":[],"6S":[],"7S":[],
+  "Rooftop":[],"Mechanical Room":[],"Engineer Shop":[],"Other":[]
+};
+function getZones(floor){return FLOOR_ZONES[floor]||[];}
+const LOG_TYPES=["PM","Repair","Inspection","Refrigerant","Note","Emergency"];
+
+function analyze(unit){
+  const logs=unit.logs||[];const alerts=[];
+  const repairs=logs.filter(function(l){return l.type==="Repair"});
+  const refLogs=logs.filter(function(l){return l.type==="Refrigerant"||/leak|low pressure|refrigerant|freon|charge/i.test(l.description)});
+  if(refLogs.length>=2)alerts.push({level:"critical",icon:"🔴",title:"RECURRING REFRIGERANT LEAK ("+refLogs.length+"x)",detail:"Repeated recharging indicates an active leak.",actions:["Stop recharging — find and fix the leak.","Pull unit, pressure test at shop.","Coil/compressor leak: REPLACE UNIT.","Document all refrigerant additions (EPA 608)."]});
+  else if(refLogs.length===1)alerts.push({level:"warning",icon:"🟡",title:"REFRIGERANT EVENT LOGGED",detail:"One event. Monitor — second confirms a leak.",actions:["Check fittings for oil residue.","Use leak detector at next PM."]});
+  if(repairs.length>=3){
+    const sorted=[].concat(repairs).sort(function(a,b){return new Date(a.date)-new Date(b.date)});
+    const span=Math.round((new Date(sorted[sorted.length-1].date)-new Date(sorted[0].date))/86400000);
+    const pyr=span>0?(repairs.length/(span/365)).toFixed(1):repairs.length;
+    alerts.push({level:repairs.length>=5?"critical":"warning",icon:repairs.length>=5?"🔴":"🟡",title:"HIGH REPAIR FREQUENCY ("+repairs.length+" repairs, ~"+pyr+"/yr)",detail:"Units averaging 2+ repairs/year are not cost-effective.",actions:["Compare repair costs vs new unit.","Budget for replacement if 5+ repairs."]});
+  }
+  const compLogs=logs.filter(function(l){return/compressor/i.test(l.description)});
+  if(compLogs.length>=2)alerts.push({level:"critical",icon:"🔴",title:"RECURRING COMPRESSOR ISSUES ("+compLogs.length+"x)",detail:"Compressor repairs cost 50-70% of new unit.",actions:["RECOMMEND UNIT REPLACEMENT.","Check electrical supply voltage.","Verify refrigerant charge."]});
+  const elecLogs=logs.filter(function(l){return/capacitor|contactor|electrical|fuse|breaker|relay/i.test(l.description)});
+  if(elecLogs.length>=2)alerts.push({level:"warning",icon:"🟡",title:"RECURRING ELECTRICAL ISSUES ("+elecLogs.length+"x)",detail:"Multiple electrical component failures.",actions:["Check voltage within 10% of nameplate.","Replace capacitors/contactors at next PM."]});
+  if(unit.nextPM){const over=Math.round((new Date(localDate())-new Date(unit.nextPM))/86400000);if(over>30)alerts.push({level:"warning",icon:"🟡",title:"PM OVERDUE BY "+over+" DAYS",detail:"Deferred PMs increase failure risk.",actions:["Schedule PM immediately."]});}
+  if(alerts.length===0&&logs.length>=2)alerts.push({level:"good",icon:"✅",title:"NO RECURRING ISSUES DETECTED",detail:logs.length+" entries analyzed. Unit appears normal.",actions:["Continue PM every 4 months.","Monitor refrigerant pressure at each PM."]});
   return alerts;
 }
 
-const inputStyle = { width:"100%", background:"#0d0d0d", border:"1px solid #2e2e2e", borderRadius:"3px", color:"#e5e5e5", padding:"0.5rem 0.6rem", fontSize:"0.82rem", boxSizing:"border-box", outline:"none", fontFamily:"'Courier New',monospace" };
-const selectStyle = { ...inputStyle, cursor:"pointer" };
-const textareaStyle = { ...inputStyle, resize:"vertical", minHeight:"80px" };
+// Styles
+const INP={width:"100%",background:"#0d0d0d",border:"1px solid #2e2e2e",borderRadius:"3px",color:"#e5e5e5",padding:"0.5rem 0.6rem",fontSize:"0.82rem",boxSizing:"border-box",outline:"none"};
+const SEL=Object.assign({},INP,{cursor:"pointer"});
+const TA=Object.assign({},INP,{resize:"vertical",minHeight:"80px"});
 
-function Modal({ title, onClose, children }) {
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:"1rem", overflowY:"auto" }}>
-      <div style={{ background:"#161616", border:"1px solid #2e2e2e", borderRadius:"4px", width:"100%", maxWidth:"640px", maxHeight:"95vh", overflow:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0.9rem 1.25rem", borderBottom:"1px solid #2a2a2a", background:"#111", position:"sticky", top:0, zIndex:1 }}>
-          <span style={{ color:"#f59e0b", fontSize:"0.8rem", letterSpacing:"0.12em", textTransform:"uppercase" }}>{title}</span>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#666", cursor:"pointer", fontSize:"1.2rem" }}>✕</button>
-        </div>
-        <div style={{ padding:"1.25rem" }}>{children}</div>
+function Modal(props){
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
+    <div style={{background:"#161616",border:"1px solid #2e2e2e",borderRadius:"4px",width:"100%",maxWidth:"640px",maxHeight:"95vh",overflow:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.9rem 1.25rem",borderBottom:"1px solid #2a2a2a",background:"#111",position:"sticky",top:0,zIndex:1}}>
+        <span style={{color:"#f59e0b",fontSize:"0.8rem",letterSpacing:"0.12em",textTransform:"uppercase"}}>{props.title}</span>
+        <button onClick={props.onClose} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"1.2rem"}}>X</button>
       </div>
+      <div style={{padding:"1.25rem"}}>{props.children}</div>
     </div>
-  );
+  </div>;
 }
 
-function Field({ label, children }) {
-  return (
-    <div style={{ marginBottom:"0.8rem" }}>
-      <label style={{ display:"block", fontSize:"0.62rem", color:"#777", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:"0.28rem" }}>{label}</label>
-      {children}
-    </div>
-  );
+function Field(props){
+  return <div style={{marginBottom:"0.8rem"}}>
+    <label style={{display:"block",fontSize:"0.62rem",color:"#777",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"0.28rem"}}>{props.label}</label>
+    {props.children}
+  </div>;
 }
 
-function AlertCard({ alert }) {
-  const bg = alert.level==="critical" ? "#1a0505" : alert.level==="warning" ? "#1a1205" : "#051a09";
-  const border = alert.level==="critical" ? "#5a1010" : alert.level==="warning" ? "#5a4010" : "#105a20";
-  const color = alert.level==="critical" ? "#f87171" : alert.level==="warning" ? "#fbbf24" : "#4ade80";
-  return (
-    <div style={{ background:bg, border:`1px solid ${border}`, borderRadius:"4px", padding:"0.9rem 1rem", marginBottom:"0.75rem" }}>
-      <div style={{ fontSize:"0.78rem", fontWeight:"bold", color, marginBottom:"0.4rem" }}>{alert.icon} {alert.title}</div>
-      <div style={{ fontSize:"0.78rem", color:"#bbb", marginBottom:"0.6rem", lineHeight:1.5 }}>{alert.detail}</div>
-      <div style={{ borderTop:`1px solid ${border}`, paddingTop:"0.5rem" }}>
-        <div style={{ fontSize:"0.65rem", color:"#666", letterSpacing:"0.08em", marginBottom:"0.35rem" }}>RECOMMENDED ACTIONS</div>
-        {alert.actions.map((a,i) => <div key={i} style={{ fontSize:"0.76rem", color:"#ccc", padding:"0.2rem 0", lineHeight:1.5 }}>{a}</div>)}
-      </div>
+function AlertCard(props){
+  const a=props.alert;
+  const bg=a.level==="critical"?"#1a0505":a.level==="warning"?"#1a1205":"#051a09";
+  const border=a.level==="critical"?"#5a1010":a.level==="warning"?"#5a4010":"#105a20";
+  const color=a.level==="critical"?"#f87171":a.level==="warning"?"#fbbf24":"#4ade80";
+  return <div style={{background:bg,border:"1px solid "+border,borderRadius:"4px",padding:"0.9rem 1rem",marginBottom:"0.75rem"}}>
+    <div style={{fontSize:"0.78rem",fontWeight:"bold",color:color,marginBottom:"0.4rem"}}>{a.icon} {a.title}</div>
+    <div style={{fontSize:"0.78rem",color:"#bbb",marginBottom:"0.6rem",lineHeight:1.5}}>{a.detail}</div>
+    <div style={{borderTop:"1px solid "+border,paddingTop:"0.5rem"}}>
+      <div style={{fontSize:"0.65rem",color:"#666",letterSpacing:"0.08em",marginBottom:"0.35rem"}}>RECOMMENDED ACTIONS</div>
+      {a.actions.map(function(x,i){return <div key={i} style={{fontSize:"0.76rem",color:"#ccc",padding:"0.2rem 0",lineHeight:1.5}}>{x}</div>})}
     </div>
-  );
+  </div>;
 }
 
-function TroubleshootTab({ unit }) {
-  const [symptom, setSymptom] = useState("");
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showDiagram, setShowDiagram] = useState(false);
+function PartsTab(props){
+  const counts=countParts(props.unit.logs||[]);
+  const hasParts=PARTS.some(function(p){return counts[p.key]>0});
+  return <div>
+    <div style={{fontSize:"0.68rem",color:"#555",letterSpacing:"0.08em",marginBottom:"0.85rem"}}>PARTS REPLACEMENT HISTORY</div>
+    {!hasParts&&<div style={{color:"#444",fontSize:"0.8rem",padding:"1.5rem 0",textAlign:"center"}}>No parts replacements logged yet. Mention part names in repair entries.</div>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
+      {PARTS.map(function(p){
+        const c=counts[p.key];
+        const color=c>=3?"#f87171":c>=2?"#fbbf24":c>=1?"#22c55e":"#333";
+        const bg=c>=3?"#1a0505":c>=2?"#1a1205":c>=1?"#051a09":"#111";
+        return <div key={p.key} style={{background:bg,border:"1px solid "+(c>0?color:"#222"),borderRadius:"3px",padding:"0.6rem 0.75rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:"0.72rem",color:c>0?"#ccc":"#555"}}>{p.label}</span>
+          <span style={{fontSize:"1rem",fontWeight:"bold",color:c>0?color:"#333"}}>{c}</span>
+        </div>;
+      })}
+    </div>
+    {hasParts&&<div style={{marginTop:"0.75rem",padding:"0.6rem 0.85rem",background:"#111",borderRadius:"3px",border:"1px solid #222",fontSize:"0.72rem",color:"#888"}}>
+      Red 3+ = critical | Yellow 2 = monitor | Green 1 = normal
+    </div>}
+  </div>;
+}
 
-  const run = async () => {
-    if (!symptom.trim()) return;
-    setLoading(true); setResult("");
-    try {
-      const unitInfo = `Unit: ${unit.make} ${unit.model}, Serial: ${unit.serialNumber}, Floor: ${unit.floor} ${unit.location||""}, Notes: ${unit.notes||"none"}`;
-      const history = (unit.logs||[]).slice(-5).map(l=>`[${l.type}] ${l.date} by ${l.tech||"?"}: ${l.description}`).join("\n") || "No history.";
-      const prompt = `You are a senior HVAC technician. Analyze this unit and symptom.\n\nUNIT: ${unitInfo}\n\nHISTORY:\n${history}\n\nSYMPTOM: ${symptom}\n\n${unit.diagramBase64?"A wiring diagram is attached. Reference specific terminals, components, and wiring paths.":"No diagram uploaded."}\n\nProvide:\n1. MOST LIKELY CAUSES (ranked)\n2. STEP-BY-STEP DIAGNOSTIC PROCEDURE\n3. TOOLS NEEDED\n4. PARTS THAT MAY NEED REPLACING\n5. SAFETY WARNINGS\n6. ESTIMATED REPAIR TIME`;
-      const content = unit.diagramBase64
-        ? [{ type:"image", source:{ type:"base64", media_type:"image/jpeg", data:unit.diagramBase64 } }, { type:"text", text:prompt }]
-        : [{ type:"text", text:prompt }];
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", "x-api-key":ANTHROPIC_KEY, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-        body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1500, messages:[{ role:"user", content }] })
-      });
-      if (!resp.ok) throw new Error("API " + resp.status);
-      const data = await resp.json();
-      setResult((data.content||[]).map(b=>b.text||"").join("").trim());
-    } catch(e) { setResult("Error: " + e.message); }
-    setLoading(false);
-  };
 
-  return (
-    <div>
-      <div style={{ display:"flex", alignItems:"center", gap:"0.6rem", marginBottom:"0.85rem", padding:"0.6rem 0.85rem", background: unit.diagramBase64?"#050d08":"#0d0a05", border:`1px solid ${unit.diagramBase64?"#1a4a2a":"#3a2a10"}`, borderRadius:"3px" }}>
-        <span>{unit.diagramBase64?"📐":"⚠️"}</span>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:"0.72rem", color: unit.diagramBase64?"#4ade80":"#f59e0b", fontWeight:"bold" }}>{unit.diagramBase64?"Wiring diagram loaded — AI will use it for precise troubleshooting":"No diagram — AI uses general knowledge + service history"}</div>
-          <div style={{ fontSize:"0.63rem", color:"#555", marginTop:"1px" }}>Edit unit to {unit.diagramBase64?"update":"upload"} a wiring diagram</div>
-        </div>
-        {unit.diagramBase64 && <img src={"data:image/jpeg;base64,"+unit.diagramBase64} style={{ width:"44px", height:"44px", objectFit:"cover", borderRadius:"2px", cursor:"pointer" }} onClick={()=>setShowDiagram(p=>!p)} />}
-      </div>
-      {showDiagram && unit.diagramBase64 && <div style={{ marginBottom:"0.85rem" }}><img src={"data:image/jpeg;base64,"+unit.diagramBase64} style={{ width:"100%", borderRadius:"3px", border:"1px solid #1a4a2a" }} /><button onClick={()=>setShowDiagram(false)} style={{ fontSize:"0.65rem", color:"#555", background:"none", border:"none", cursor:"pointer", marginTop:"0.3rem" }}>Hide</button></div>}
-      <Field label="Describe the Problem / Symptom">
-        <textarea style={{ ...textareaStyle, minHeight:"90px" }} value={symptom} onChange={e=>setSymptom(e.target.value)} placeholder="e.g. Not cooling, compressor loud, tripping breaker, freezing up, leaking water..." />
-      </Field>
-      <button onClick={run} disabled={loading||!symptom.trim()} style={{ background: loading||!symptom.trim()?"#1a1a1a":"#3b82f6", border:"none", color: loading||!symptom.trim()?"#444":"#fff", padding:"0.55rem 1.25rem", borderRadius:"3px", cursor: loading||!symptom.trim()?"not-allowed":"pointer", fontSize:"0.78rem", fontWeight:"bold", width:"100%", marginBottom:"1rem" }}>
-        {loading?"⏳ ANALYZING...":"🔧 RUN AI TROUBLESHOOT"}
+function ManualsTab(props){
+  const unit=props.unit;
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState("");
+  const [question,setQuestion]=useState("");
+  const [selectedManual,setSelectedManual]=useState(null);
+
+  function askManual(){
+    if(!question.trim()||!selectedManual)return;
+    setLoading(true);setResult("");
+    const prompt="You are a senior HVAC technician. A technician is asking about the following unit:\n\nUNIT: "+unit.make+" "+unit.model+", Serial: "+unit.serialNumber+"\n\nUsing the manual titled \""+selectedManual.name+"\" ("+selectedManual.brand+"), answer this question:\n\n"+question+"\n\nBe specific and reference section names or procedures from the manual where possible. Give practical step-by-step guidance.";
+    fetch("/anthropic",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,messages:[{role:"user",content:prompt}]})})
+    .then(function(r){return r.json()})
+    .then(function(d){setResult((d.content||[]).map(function(b){return b.text||""}).join("").trim());setLoading(false)})
+    .catch(function(e){setResult("Error: "+e.message);setLoading(false)});
+  }
+
+  return <div>
+    <div style={{fontSize:"0.68rem",color:"#555",letterSpacing:"0.08em",marginBottom:"0.85rem"}}>UNIT MANUALS & DOCUMENTATION</div>
+    <div style={{marginBottom:"1rem"}}>
+      {MANUALS.map(function(m,i){
+        const selected=selectedManual&&selectedManual.url===m.url;
+        return <div key={i} onClick={function(){setSelectedManual(m);setResult("")}} style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.65rem 0.85rem",marginBottom:"0.4rem",background:selected?"#1a1a0a":"#111",border:"1px solid "+(selected?"#f59e0b":"#222"),borderRadius:"3px",cursor:"pointer"}}>
+          <span style={{fontSize:"1.2rem"}}>📄</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:"0.78rem",color:selected?"#f59e0b":"#ccc",fontWeight:selected?"bold":"normal"}}>{m.name}</div>
+            <div style={{fontSize:"0.62rem",color:"#555",marginTop:"1px"}}>{m.brand}</div>
+          </div>
+          <a href={m.url} target="_blank" onClick={function(e){e.stopPropagation()}} style={{fontSize:"0.65rem",color:"#3b82f6",textDecoration:"none",border:"1px solid #1a2a3a",padding:"2px 8px",borderRadius:"3px",flexShrink:0}}>VIEW</a>
+        </div>;
+      })}
+    </div>
+    {selectedManual&&<div>
+      <div style={{fontSize:"0.62rem",color:"#f59e0b",letterSpacing:"0.08em",marginBottom:"0.5rem"}}>ASK AI ABOUT: {selectedManual.name.toUpperCase()}</div>
+      <textarea style={{width:"100%",background:"#0d0d0d",border:"1px solid #2e2e2e",borderRadius:"3px",color:"#e5e5e5",padding:"0.5rem 0.6rem",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical",minHeight:"80px",outline:"none",marginBottom:"0.5rem"}} value={question} onChange={function(e){setQuestion(e.target.value)}} placeholder={"e.g. What is the startup procedure? What are the maintenance intervals? How do I check refrigerant charge?"}/>
+      <button onClick={askManual} disabled={loading||!question.trim()} style={{background:loading||!question.trim()?"#1a1a1a":"#f59e0b",border:"none",color:loading||!question.trim()?"#444":"#000",padding:"0.5rem 1.25rem",borderRadius:"3px",cursor:loading||!question.trim()?"not-allowed":"pointer",fontSize:"0.78rem",fontWeight:"bold",width:"100%",marginBottom:"1rem"}}>
+        {loading?"⏳ READING MANUAL...":"📄 ASK AI ABOUT THIS MANUAL"}
       </button>
-      {result && <div style={{ background:"#080d12", border:"1px solid #1a2a3a", borderRadius:"4px", padding:"1rem" }}><div style={{ fontSize:"0.62rem", color:"#3b82f6", letterSpacing:"0.1em", marginBottom:"0.75rem" }}>AI TROUBLESHOOTING REPORT — {unit.serialNumber}</div><div style={{ fontSize:"0.8rem", color:"#d0e0f0", lineHeight:1.75, whiteSpace:"pre-wrap" }}>{result}</div></div>}
-    </div>
-  );
+      {result&&<div style={{background:"#080d12",border:"1px solid #1a2a3a",borderRadius:"4px",padding:"1rem"}}><div style={{fontSize:"0.62rem",color:"#3b82f6",letterSpacing:"0.1em",marginBottom:"0.75rem"}}>AI MANUAL REFERENCE — {selectedManual.name}</div><div style={{fontSize:"0.8rem",color:"#d0e0f0",lineHeight:1.75,whiteSpace:"pre-wrap"}}>{result}</div></div>}
+    </div>}
+  </div>;
 }
 
-function UnitDetail({ unit, onEdit, onAddLog, onDeleteLog }) {
-  const [tab, setTab] = useState("info");
-  const patterns = analyzePatterns(unit);
-  const criticalCount = patterns.filter(p=>p.level==="critical").length;
-  const warnCount = patterns.filter(p=>p.level==="warning").length;
-  const tabs = [
-    { id:"info", label:"INFO" },
-    { id:"logs", label:`HISTORY (${unit.logs?.length||0})` },
-    { id:"analysis", label:`AI ANALYSIS${criticalCount>0?` 🔴${criticalCount}`:warnCount>0?` 🟡${warnCount}`:" ✅"}` },
-    { id:"troubleshoot", label:"🔧 TROUBLESHOOT" }
+function TroubleshootTab(props){
+  const unit=props.unit;
+  const [symptom,setSymptom]=useState("");
+  const [result,setResult]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [showDiag,setShowDiag]=useState(false);
+  function run(){
+    if(!symptom.trim())return;
+    setLoading(true);setResult("");
+    const counts=countParts(unit.logs||[]);
+    const partsHist=PARTS.filter(function(p){return counts[p.key]>0}).map(function(p){return p.label+": "+counts[p.key]+"x"}).join(", ")||"None recorded";
+    const hist=(unit.logs||[]).slice(-6).map(function(l){return "["+l.type+"] "+l.date+": "+l.description}).join("\n")||"No history";
+    const specsStr=[unit.volts&&"Volts: "+unit.volts,unit.refrigerantType&&"Ref: "+unit.refrigerantType,unit.totalCharge&&"Charge: "+unit.totalCharge+" Ozs",unit.compRLA&&"RLA: "+unit.compRLA+"A",unit.highSidePSI&&"High: "+unit.highSidePSI+" PSI",unit.lowSidePSI&&"Low: "+unit.lowSidePSI+" PSI"].filter(Boolean).join(", ")||"not recorded";
+    const prompt="You are a senior HVAC technician.\n\nUNIT: "+unit.make+" "+unit.model+", Serial: "+unit.serialNumber+", Floor: "+unit.floor+" "+(unit.location||"")+"\nSPECS: "+specsStr+"\nNOTES: "+(unit.notes||"none")+"\nPARTS HISTORY: "+partsHist+"\nSERVICE HISTORY:\n"+hist+"\nSYMPTOM: "+symptom+"\n\n"+(unit.diagramBase64?"A wiring diagram is attached.":"No diagram.")+"\n\nProvide:\n1. MOST LIKELY CAUSES\n2. STEP-BY-STEP DIAGNOSTIC\n3. TOOLS NEEDED\n4. PARTS TO REPLACE\n5. SAFETY WARNINGS\n6. ESTIMATED TIME & COST";
+    const content=unit.diagramBase64
+      ?[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:unit.diagramBase64}},{type:"text",text:prompt}]
+      :[{type:"text",text:prompt}];
+    fetch("/anthropic",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1800,messages:[{role:"user",content:content}]})})
+      .then(function(r){return r.json()})
+      .then(function(d){setResult((d.content||[]).map(function(b){return b.text||""}).join("").trim());setLoading(false);})
+      .catch(function(e){setResult("Error: "+e.message);setLoading(false);});
+  }
+  return <div>
+    <div style={{display:"flex",alignItems:"center",gap:"0.6rem",marginBottom:"0.85rem",padding:"0.6rem 0.85rem",background:unit.diagramBase64?"#050d08":"#0d0a05",border:"1px solid "+(unit.diagramBase64?"#1a4a2a":"#3a2a10"),borderRadius:"3px"}}>
+      <span>{unit.diagramBase64?"📐":"⚠️"}</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:"0.72rem",color:unit.diagramBase64?"#4ade80":"#f59e0b",fontWeight:"bold"}}>{unit.diagramBase64?"Wiring diagram loaded":"No diagram — using history + general knowledge"}</div>
+        <div style={{fontSize:"0.63rem",color:"#555",marginTop:"1px"}}>Edit unit to {unit.diagramBase64?"update":"upload"} a diagram</div>
+      </div>
+      {unit.diagramBase64&&<img src={"data:image/jpeg;base64,"+unit.diagramBase64} style={{width:"44px",height:"44px",objectFit:"cover",borderRadius:"2px",cursor:"pointer"}} onClick={function(){setShowDiag(function(p){return !p})}}/>}
+    </div>
+    {showDiag&&unit.diagramBase64&&<div style={{marginBottom:"0.85rem"}}><img src={"data:image/jpeg;base64,"+unit.diagramBase64} style={{width:"100%",borderRadius:"3px",border:"1px solid #1a4a2a"}}/><button onClick={function(){setShowDiag(false)}} style={{fontSize:"0.65rem",color:"#555",background:"none",border:"none",cursor:"pointer",marginTop:"0.3rem"}}>Hide</button></div>}
+    <Field label="Describe the Problem">
+      <textarea style={Object.assign({},TA,{minHeight:"90px"})} value={symptom} onChange={function(e){setSymptom(e.target.value)}} placeholder="e.g. Not cooling, compressor loud, tripping breaker, freezing up..."/>
+    </Field>
+    <button onClick={run} disabled={loading||!symptom.trim()} style={{background:loading||!symptom.trim()?"#1a1a1a":"#3b82f6",border:"none",color:loading||!symptom.trim()?"#444":"#fff",padding:"0.55rem 1.25rem",borderRadius:"3px",cursor:loading||!symptom.trim()?"not-allowed":"pointer",fontSize:"0.78rem",fontWeight:"bold",width:"100%",marginBottom:"1rem"}}>
+      {loading?"Analyzing...":"Run AI Troubleshoot"}
+    </button>
+    {result&&<div style={{background:"#080d12",border:"1px solid #1a2a3a",borderRadius:"4px",padding:"1rem"}}><div style={{fontSize:"0.62rem",color:"#3b82f6",letterSpacing:"0.1em",marginBottom:"0.75rem"}}>AI TROUBLESHOOTING REPORT</div><div style={{fontSize:"0.8rem",color:"#d0e0f0",lineHeight:1.75,whiteSpace:"pre-wrap"}}>{result}</div></div>}
+  </div>;
+}
+
+function UnitDetail(props){
+  const unit=props.unit;const isAdmin=props.isAdmin;
+  const [tab,setTab]=useState("info");
+  const patterns=analyze(unit);
+  const crit=patterns.filter(function(p){return p.level==="critical"}).length;
+  const warn=patterns.filter(function(p){return p.level==="warning"}).length;
+  const pc=countParts(unit.logs||[]);
+  const critParts=PARTS.filter(function(p){return pc[p.key]>=3}).length;
+  const tabs=[
+    {id:"info",label:"INFO"},
+    {id:"logs",label:"HISTORY ("+(unit.logs?unit.logs.length:0)+")"},
+    {id:"parts",label:"PARTS"+(critParts>0?" 🔴"+critParts:"")},
+    {id:"analysis",label:"ANALYSIS"+(crit>0?" 🔴"+crit:warn>0?" 🟡"+warn:" ✅")},
+    {id:"troubleshoot",label:"TROUBLESHOOT"},
+    {id:"manuals",label:"📄 MANUALS"},
   ];
-  return (
-    <div style={{ fontFamily:"'Courier New',monospace" }}>
-      <div style={{ display:"flex", gap:"2px", marginBottom:"1rem", borderBottom:"1px solid #222", overflowX:"auto" }}>
-        {tabs.map(t => <button key={t.id} onClick={()=>setTab(t.id)} style={{ background:tab===t.id?"#1e1a12":"none", border:"none", borderBottom:tab===t.id?"2px solid #f59e0b":"2px solid transparent", color:tab===t.id?"#f59e0b":"#555", padding:"0.5rem 0.75rem", cursor:"pointer", fontSize:"0.65rem", letterSpacing:"0.06em", whiteSpace:"nowrap" }}>{t.label}</button>)}
-      </div>
-      {tab==="info" && <>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.6rem 1.5rem", marginBottom:"1rem" }}>
-          {[["Serial #",unit.serialNumber],["Make / Model",`${unit.make}${unit.model?" "+unit.model:""}`],["Floor",unit.floor],["Location",unit.location||"—"],["Status",unit.status],["PM Status",unit.pmStatus],["Install Date",formatDate(unit.installDate)],["Last PM",formatDate(unit.lastPM)],["Next PM",formatDate(unit.nextPM)]].map(([k,v])=>(
-            <div key={k}><div style={{ fontSize:"0.6rem", color:"#555", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:"2px" }}>{k}</div><div style={{ color:k==="Status"?STATUS_COLORS[v]||"#e5e5e5":k==="PM Status"?PM_STATUS_COLORS[v]||"#e5e5e5":"#e5e5e5", fontSize:"0.82rem" }}>{v||"—"}</div></div>
-          ))}
-        </div>
-        {unit.photoBase64 && <div style={{ marginBottom:"0.85rem" }}><div style={{ fontSize:"0.6rem", color:"#555", marginBottom:"0.35rem" }}>UNIT PHOTO</div><img src={"data:image/jpeg;base64,"+unit.photoBase64} style={{ width:"100%", maxHeight:"200px", objectFit:"contain", borderRadius:"3px", border:"1px solid #222", background:"#0a0a0a" }} /></div>}
-        {unit.notes && <div style={{ background:"#0d0d0d", border:"1px solid #222", borderRadius:"3px", padding:"0.7rem 0.85rem" }}><div style={{ fontSize:"0.6rem", color:"#555", marginBottom:"0.35rem" }}>NOTES</div><div style={{ color:"#bbb", fontSize:"0.8rem", lineHeight:1.6 }}>{unit.notes}</div></div>}
-        <div style={{ marginTop:"1rem", display:"flex", justifyContent:"flex-end" }}><button onClick={onEdit} style={{ background:"#f59e0b", border:"none", color:"#000", padding:"0.45rem 1.1rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.75rem", fontWeight:"bold" }}>EDIT UNIT</button></div>
-      </>}
-      {tab==="logs" && <>
-        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:"0.75rem" }}><button onClick={onAddLog} style={{ background:"#22c55e", border:"none", color:"#000", padding:"0.4rem 0.9rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.72rem", fontWeight:"bold" }}>+ ADD LOG ENTRY</button></div>
-        <div style={{ maxHeight:"360px", overflowY:"auto" }}>
-          {(!unit.logs||unit.logs.length===0) ? <div style={{ color:"#444", fontSize:"0.8rem", textAlign:"center", padding:"2.5rem 0" }}>No service history yet</div>
-          : [...unit.logs].reverse().map((log,i)=>(
-            <div key={i} style={{ borderLeft:`3px solid ${TYPE_COLORS[log.type]||"#444"}`, paddingLeft:"0.75rem", marginBottom:"1rem" }}>
-              <div style={{ display:"flex", gap:"0.5rem", alignItems:"center", flexWrap:"wrap", marginBottom:"0.25rem" }}>
-                <span style={{ color:TYPE_COLORS[log.type]||"#888", fontSize:"0.68rem", fontWeight:"bold", background:`${TYPE_COLORS[log.type]}22`, padding:"1px 6px", borderRadius:"2px" }}>{log.type}</span>
-                <span style={{ color:"#666", fontSize:"0.68rem" }}>{formatDate(log.date)}</span>
-                {log.tech && <span style={{ color:"#f59e0b", fontSize:"0.68rem", background:"#1a1200", padding:"1px 5px", borderRadius:"50px", fontWeight:"bold" }}>{log.tech}</span>}
-                {log.refrigerantAdded && <span style={{ color:"#06b6d4", fontSize:"0.65rem" }}>💧 {log.refrigerantAdded} lbs</span>}
-                {log.pressure && <span style={{ color:"#a855f7", fontSize:"0.65rem" }}>⚡ {log.pressure} PSI</span>}
-                <button onClick={()=>onDeleteLog(unit.logs.length-1-i)} style={{ marginLeft:"auto", background:"none", border:"none", color:"#444", cursor:"pointer", fontSize:"0.65rem", padding:0 }}>✕</button>
-              </div>
-              <div style={{ color:"#ccc", fontSize:"0.8rem", lineHeight:1.55 }}>{log.description}</div>
-            </div>
-          ))}
-        </div>
-      </>}
-      {tab==="analysis" && <>
-        <div style={{ fontSize:"0.68rem", color:"#555", letterSpacing:"0.08em", marginBottom:"0.85rem" }}>PATTERN ANALYSIS — {unit.logs?.length||0} LOG ENTRIES SCANNED</div>
-        {(unit.logs?.length||0) < 2 ? <div style={{ color:"#444", fontSize:"0.8rem", padding:"2rem 0", textAlign:"center" }}>Add at least 2 log entries to enable pattern analysis.</div>
-        : patterns.map((a,i)=><AlertCard key={i} alert={a} />)}
-      </>}
-      {tab==="troubleshoot" && <TroubleshootTab unit={unit} />}
+  const specs=[[" Volts",unit.volts],[" Hz",unit.hz],["Comp RLA",unit.compRLA?unit.compRLA+" A":""],[" LRA",unit.lra?unit.lra+" A":""],[" Evap Fan",unit.evapFanAmps?unit.evapFanAmps+" A":""],[" Refrigerant",unit.refrigerantType],[" Total Charge",unit.totalCharge?unit.totalCharge+" Ozs":""],[" High Side",unit.highSidePSI?unit.highSidePSI+" PSI":""],[" Low Side",unit.lowSidePSI?unit.lowSidePSI+" PSI":""]].filter(function(kv){return kv[1]});
+  return <div style={{fontFamily:"Courier New,monospace"}}>
+    <div style={{display:"flex",gap:"2px",marginBottom:"1rem",borderBottom:"1px solid #222",overflowX:"auto"}}>
+      {tabs.map(function(t){return <button key={t.id} onClick={function(){setTab(t.id)}} style={{background:tab===t.id?"#1e1a12":"none",border:"none",borderBottom:tab===t.id?"2px solid #f59e0b":"2px solid transparent",color:tab===t.id?"#f59e0b":"#555",padding:"0.5rem 0.75rem",cursor:"pointer",fontSize:"0.65rem",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{t.label}</button>})}
     </div>
-  );
+    {tab==="info"&&<div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem 1.5rem",marginBottom:"1rem"}}>
+        {[["Serial",unit.serialNumber],["Make/Model",unit.make+(unit.model?" "+unit.model:"")],["Floor",unit.floor],["Zone",unit.zone||"--"],["Room/Cubicle",unit.location||"--"],["Status",unit.status],["PM Status",unit.pmStatus],["Install",fmtDate(unit.installDate)],["Last PM",fmtDate(unit.lastPM)],["Next PM",fmtDate(unit.nextPM)]].map(function(kv){
+          return <div key={kv[0]}><div style={{fontSize:"0.6rem",color:"#555",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"2px"}}>{kv[0]}</div><div style={{color:kv[0]==="Status"?SC[kv[1]]||"#e5e5e5":kv[0]==="PM Status"?PC[kv[1]]||"#e5e5e5":"#e5e5e5",fontSize:"0.82rem"}}>{kv[1]||"--"}</div></div>;
+        })}
+      </div>
+      {specs.length>0&&<div style={{background:"#0a0d0a",border:"1px solid #1a3a1a",borderRadius:"3px",padding:"0.75rem",marginBottom:"0.85rem"}}>
+        <div style={{fontSize:"0.62rem",color:"#f59e0b",letterSpacing:"0.1em",marginBottom:"0.6rem"}}>TECHNICAL SPECS</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem 1rem"}}>
+          {specs.map(function(kv){return <div key={kv[0]}><div style={{fontSize:"0.58rem",color:"#4a8a4a",letterSpacing:"0.08em",textTransform:"uppercase"}}>{kv[0].trim()}</div><div style={{color:"#4ade80",fontSize:"0.82rem",fontWeight:"bold"}}>{kv[1]}</div></div>})}
+        </div>
+      </div>}
+      {unit.photoBase64&&<div style={{marginBottom:"0.85rem"}}><div style={{fontSize:"0.6rem",color:"#555",marginBottom:"0.35rem"}}>UNIT PHOTO</div><img src={"data:image/jpeg;base64,"+unit.photoBase64} style={{width:"100%",maxHeight:"200px",objectFit:"contain",borderRadius:"3px",border:"1px solid #222",background:"#0a0a0a"}}/></div>}
+      {unit.diagramBase64&&<div style={{marginBottom:"0.85rem"}}><div style={{fontSize:"0.6rem",color:"#4a8a6a",marginBottom:"0.35rem"}}>WIRING DIAGRAM</div><img src={"data:image/jpeg;base64,"+unit.diagramBase64} style={{width:"100%",maxHeight:"200px",objectFit:"contain",borderRadius:"3px",border:"1px solid #1a3a2a",background:"#080d0a"}}/></div>}
+      {unit.notes&&<div style={{background:"#0d0d0d",border:"1px solid #222",borderRadius:"3px",padding:"0.7rem 0.85rem",marginBottom:"0.85rem"}}><div style={{fontSize:"0.6rem",color:"#555",marginBottom:"0.35rem"}}>NOTES</div><div style={{color:"#bbb",fontSize:"0.8rem",lineHeight:1.6}}>{unit.notes}</div></div>}
+      <div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={props.onEdit} style={{background:"#f59e0b",border:"none",color:"#000",padding:"0.45rem 1.1rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.75rem",fontWeight:"bold"}}>EDIT UNIT</button></div>
+    </div>}
+    {tab==="logs"&&<div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"0.75rem"}}>
+        <button onClick={props.onAddLog} style={{background:"#22c55e",border:"none",color:"#000",padding:"0.4rem 0.9rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.72rem",fontWeight:"bold"}}>+ ADD LOG ENTRY</button>
+      </div>
+      <div style={{maxHeight:"380px",overflowY:"auto"}}>
+        {(!unit.logs||unit.logs.length===0)?<div style={{color:"#444",fontSize:"0.8rem",textAlign:"center",padding:"2.5rem 0"}}>No service history yet</div>
+        :[].concat(unit.logs).reverse().map(function(log,i){
+          return <div key={i} style={{borderLeft:"3px solid "+(TC[log.type]||"#444"),paddingLeft:"0.75rem",marginBottom:"1rem"}}>
+            <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.25rem"}}>
+              <span style={{color:TC[log.type]||"#888",fontSize:"0.68rem",fontWeight:"bold",background:(TC[log.type]||"#444")+"22",padding:"1px 6px",borderRadius:"2px"}}>{log.type}</span>
+              <span style={{color:"#666",fontSize:"0.68rem"}}>{fmtDate(log.date)}</span>
+              {log.tech&&<span style={{color:"#f59e0b",fontSize:"0.68rem",background:"#1a1200",padding:"1px 6px",borderRadius:"50px",fontWeight:"bold"}}>{log.tech}</span>}
+              {log.refrigerantAdded&&<span style={{color:"#06b6d4",fontSize:"0.65rem"}}>💧 {log.refrigerantAdded} lbs</span>}
+              {log.pressure&&<span style={{color:"#a855f7",fontSize:"0.65rem"}}>PSI: {log.pressure}</span>}
+              {isAdmin&&<button onClick={function(){props.onDeleteLog(unit.logs.length-1-i)}} style={{marginLeft:"auto",background:"none",border:"none",color:"#444",cursor:"pointer",fontSize:"0.65rem",padding:0}}>X</button>}
+            </div>
+            <div style={{color:"#ccc",fontSize:"0.8rem",lineHeight:1.55}}>{log.description}</div>
+          </div>;
+        })}
+      </div>
+    </div>}
+    {tab==="parts"&&<PartsTab unit={unit}/>}
+    {tab==="analysis"&&<div>
+      <div style={{fontSize:"0.68rem",color:"#555",letterSpacing:"0.08em",marginBottom:"0.85rem"}}>PATTERN ANALYSIS — {unit.logs?unit.logs.length:0} LOG ENTRIES SCANNED</div>
+      {(!unit.logs||unit.logs.length<2)?<div style={{color:"#444",fontSize:"0.8rem",padding:"2rem 0",textAlign:"center"}}>Add at least 2 log entries to enable analysis.</div>:patterns.map(function(a,i){return <AlertCard key={i} alert={a}/>})}
+    </div>}
+    {tab==="troubleshoot"&&<TroubleshootTab unit={unit}/>}
+    {tab==="manuals"&&<ManualsTab unit={unit}/>}
+  </div>;
 }
 
-function UnitForm({ unit, onSave, onClose }) {
-  const blank = { serialNumber:"", make:"", model:"", location:"", floor:"North Lobby", status:"Operational", pmStatus:"Current", lastPM:"", nextPM:"", installDate:"", notes:"", photoBase64:"", diagramBase64:"" };
-  const [form, setForm] = useState(unit ? { ...blank, ...unit } : blank);
-  const [scanning, setScanning] = useState(false);
-  const [scanMsg, setScanMsg] = useState("");
-  const [photoPreview, setPhotoPreview] = useState(unit?.photoBase64 ? "data:image/jpeg;base64,"+unit.photoBase64 : "");
-  const set = (k,v) => setForm(f=>({ ...f, [k]:v }));
-  const handleLastPM = v => { set("lastPM",v); if(v) set("nextPM",addMonths(v,4)); };
+function UnitForm(props){
+  const unit=props.unit;
+  const blank={serialNumber:"",make:"",model:"",location:"",floor:"North Lobby",zone:"",status:"Operational",pmStatus:"Current",lastPM:"",nextPM:"",installDate:"",notes:"",photoBase64:"",diagramBase64:"",volts:"",hz:"",compRLA:"",lra:"",evapFanAmps:"",refrigerantType:"",totalCharge:"",highSidePSI:"",lowSidePSI:""};
+  const [form,setForm]=useState(unit?Object.assign({},blank,unit):blank);
+  const [scanning,setScanning]=useState(false);
+  const [scanMsg,setScanMsg]=useState("");
+  const [photoPreview,setPhotoPreview]=useState(unit&&unit.photoBase64?"data:image/jpeg;base64,"+unit.photoBase64:"");
+  const [diagPreview,setDiagPreview]=useState(unit&&unit.diagramBase64?"data:image/jpeg;base64,"+unit.diagramBase64:"");
+  const [savedMakes]=useState(getAllMakes);
+  const [savedModels,setSavedModels]=useState(function(){return getModels(unit?unit.make:"")});
+  function set(k,v){setForm(function(f){return Object.assign({},f,{[k]:v})})}
+  function handleLastPM(v){set("lastPM",v);if(v)set("nextPM",addMonths(v,4))}
+  function handleMake(v){set("make",v);setSavedModels(getModels(v))}
 
-  const handlePhoto = async (e) => {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target.result;
-      const base64 = dataUrl.split(",")[1];
-      const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
-      setPhotoPreview(dataUrl); set("photoBase64", base64);
-      setScanning(true); setScanMsg("Scanning nameplate...");
-      try {
-        const resp = await fetch("https://api.anthropic.com/v1/messages", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json", "x-api-key":ANTHROPIC_KEY, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-          body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:800, messages:[{ role:"user", content:[
-            { type:"image", source:{ type:"base64", media_type:mediaType, data:base64 } },
-            { type:"text", text:"You are an HVAC technician assistant. Examine this AC unit nameplate image carefully. Extract all visible information. Respond with ONLY a raw JSON object, no markdown. Fields: serialNumber, make, model, refrigerantType, voltage, tonnage, notes. Empty string if not visible." }
-          ]}] })
+  function handlePhoto(e){
+    const file=e.target.files[0];if(!file)return;
+    setScanning(true);setScanMsg("Processing image...");
+    compressImage(file,1200).then(function(base64){
+      if(!base64){setScanMsg("Could not read image.");setScanning(false);return;}
+      setPhotoPreview("data:image/jpeg;base64,"+base64);
+      set("photoBase64",base64);
+      setScanMsg("Scanning nameplate with AI...");
+      fetch("/anthropic",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:"image/jpeg",data:base64}},
+          {type:"text",text:'Look at this HVAC unit nameplate. Extract all visible text. Return ONLY valid JSON with these keys: serialNumber, make, model, refrigerantType, voltage, hz, compRLA, lra, tonnage, notes. Use empty string for missing fields.'}
+        ]}]})
+      })
+      .then(function(r){return r.json()})
+      .then(function(d){
+        const text=(d.content||[]).map(function(b){return b.text||""}).join("").trim();
+        const s=text.indexOf("{");const en=text.lastIndexOf("}");
+        if(s===-1){setScanMsg("AI could not read nameplate — fill in manually.");setScanning(false);return;}
+        const p=JSON.parse(text.slice(s,en+1));
+        setForm(function(f){
+          const extra=[p.refrigerantType&&"Refrigerant: "+p.refrigerantType,p.tonnage&&"Tonnage: "+p.tonnage,p.notes].filter(Boolean).join(" | ");
+          return Object.assign({},f,{
+            serialNumber:p.serialNumber||f.serialNumber,
+            make:p.make||f.make,
+            model:p.model||f.model,
+            volts:p.voltage||f.volts,
+            hz:p.hz||f.hz,
+            compRLA:p.compRLA||f.compRLA,
+            lra:p.lra||f.lra,
+            refrigerantType:p.refrigerantType||f.refrigerantType,
+            notes:[f.notes,extra].filter(Boolean).join(" | "),
+            photoBase64:base64
+          });
         });
-        if (!resp.ok) throw new Error("API error " + resp.status);
-        const data = await resp.json();
-        const text = (data.content||[]).map(b=>b.text||"").join("").trim();
-        const match = text.match(/\{[\s\S]*\}/);
-        if (!match) throw new Error("No JSON found");
-        const parsed = JSON.parse(match[0]);
-        const extraNotes = [parsed.refrigerantType&&"Refrigerant: "+parsed.refrigerantType, parsed.voltage&&"Voltage: "+parsed.voltage, parsed.tonnage&&"Tonnage: "+parsed.tonnage, parsed.notes].filter(Boolean).join(" | ");
-        setForm(f => ({ ...f, serialNumber:parsed.serialNumber||f.serialNumber, make:parsed.make||f.make, model:parsed.model||f.model, notes:[f.notes,extraNotes].filter(Boolean).join(" | "), photoBase64:base64 }));
-        setScanMsg("SUCCESS: Nameplate scanned — review and adjust fields below.");
-      } catch(err) { setScanMsg("Could not auto-read nameplate. Fill in manually. (" + err.message.slice(0,50) + ")"); }
-      setScanning(false);
-    };
-    reader.readAsDataURL(file);
-  };
+        setScanMsg("SUCCESS: Nameplate scanned — review fields below.");
+        setScanning(false);
+      })
+      .catch(function(err){setScanMsg("Scan failed: "+err.message.slice(0,80));setScanning(false);});
+    });
+  }
 
-  return (
-    <>
-      <div style={{ marginBottom:"1rem", border:"1px dashed #2e2e2e", borderRadius:"4px", padding:"0.85rem", background:"#0a0a0a" }}>
-        <div style={{ fontSize:"0.62rem", color:"#777", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:"0.6rem" }}>📷 Scan Nameplate / Upload Unit Photo</div>
-        <div style={{ display:"flex", gap:"0.75rem", alignItems:"flex-start", flexWrap:"wrap" }}>
-          {photoPreview && <img src={photoPreview} style={{ width:"88px", height:"88px", objectFit:"cover", borderRadius:"3px", border:"1px solid #2e2e2e", flexShrink:0 }} />}
-          <div style={{ flex:1, minWidth:"160px" }}>
-            <label style={{ display:"inline-block", background:"#1a1a1a", border:"1px solid #3a3a3a", color:"#ccc", padding:"0.4rem 0.85rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.73rem", letterSpacing:"0.05em" }}>
-              {photoPreview?"CHANGE PHOTO":"📷 UPLOAD / TAKE PHOTO"}
-              <input type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={handlePhoto} />
-            </label>
-            <div style={{ fontSize:"0.67rem", color:"#555", marginTop:"0.4rem", lineHeight:1.55 }}>Point camera at the unit nameplate — AI will auto-fill serial #, make, model and specs.</div>
-            {scanMsg && <div style={{ fontSize:"0.7rem", marginTop:"0.4rem", color: scanning?"#f59e0b":scanMsg.startsWith("SUCCESS")?"#22c55e":"#f87171" }}>{scanning?"⏳ ":""}{scanMsg}</div>}
-          </div>
+  function handleDiagram(e){
+    const file=e.target.files[0];if(!file)return;
+    compressImage(file,1600).then(function(base64){
+      if(base64){setDiagPreview("data:image/jpeg;base64,"+base64);set("diagramBase64",base64);}
+    });
+  }
+
+  function handleSave(){
+    if(!form.serialNumber||!form.make){alert("Please fill in Serial Number and Make.");return;}
+    saveBrand(form.make,form.model);
+    props.onSave(form);
+  }
+
+  return <div>
+    <div style={{marginBottom:"1rem",border:"1px dashed #2e2e2e",borderRadius:"4px",padding:"0.85rem",background:"#0a0a0a"}}>
+      <div style={{fontSize:"0.62rem",color:"#777",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"0.6rem"}}>NAMEPLATE PHOTO (AI Auto-Fill)</div>
+      <div style={{display:"flex",gap:"0.75rem",alignItems:"flex-start",flexWrap:"wrap"}}>
+        {photoPreview&&<img src={photoPreview} style={{width:"88px",height:"88px",objectFit:"cover",borderRadius:"3px",border:"1px solid #2e2e2e",flexShrink:0}}/>}
+        <div style={{flex:1,minWidth:"160px"}}>
+          <label style={{display:"inline-block",background:"#1a1a1a",border:"1px solid #3a3a3a",color:"#ccc",padding:"0.4rem 0.85rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.73rem"}}>
+            {photoPreview?"CHANGE PHOTO":"UPLOAD / TAKE PHOTO"}
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handlePhoto}/>
+          </label>
+          <div style={{fontSize:"0.67rem",color:"#555",marginTop:"0.4rem",lineHeight:1.55}}>Point at nameplate — AI reads serial, make, model, specs.</div>
+          {scanMsg&&<div style={{fontSize:"0.7rem",marginTop:"0.4rem",color:scanning?"#f59e0b":scanMsg.startsWith("SUCCESS")?"#22c55e":"#f87171"}}>{scanning?"Loading... ":""}{scanMsg}</div>}
         </div>
       </div>
-      <div style={{ marginBottom:"1rem", border:"1px dashed #1a3a2a", borderRadius:"4px", padding:"0.85rem", background:"#080d0a" }}>
-        <div style={{ fontSize:"0.62rem", color:"#4a8a6a", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:"0.6rem" }}>📐 Upload Wiring / Unit Diagram</div>
-        <div style={{ display:"flex", gap:"0.75rem", alignItems:"flex-start", flexWrap:"wrap" }}>
-          {form.diagramBase64 && <img src={"data:image/jpeg;base64,"+form.diagramBase64} style={{ width:"88px", height:"88px", objectFit:"cover", borderRadius:"3px", border:"1px solid #1a3a2a", flexShrink:0 }} />}
-          <div style={{ flex:1, minWidth:"160px" }}>
-            <label style={{ display:"inline-block", background:"#0a1a12", border:"1px solid #1a4a2a", color:"#4ade80", padding:"0.4rem 0.85rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.73rem", letterSpacing:"0.05em" }}>
-              {form.diagramBase64?"CHANGE DIAGRAM":"📐 UPLOAD DIAGRAM / WIRING"}
-              <input type="file" accept="image/*" style={{ display:"none" }} onChange={e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>set("diagramBase64",ev.target.result.split(",")[1]); r.readAsDataURL(f); }} />
-            </label>
-            <div style={{ fontSize:"0.67rem", color:"#2a5a3a", marginTop:"0.4rem", lineHeight:1.55 }}>Upload wiring diagram or schematic. AI uses it for accurate troubleshooting.</div>
-          </div>
-        </div>
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 1rem" }}>
-        <Field label="Serial Number *"><input style={inputStyle} value={form.serialNumber} onChange={e=>set("serialNumber",e.target.value)} placeholder="e.g. AC-2024-001" /></Field>
-        <Field label="Make / Brand *"><input style={inputStyle} value={form.make} onChange={e=>set("make",e.target.value)} placeholder="e.g. Carrier, Trane, York" /></Field>
-        <Field label="Model"><input style={inputStyle} value={form.model} onChange={e=>set("model",e.target.value)} placeholder="e.g. 50XC060" /></Field>
-        <Field label="Floor / Zone"><select style={selectStyle} value={form.floor} onChange={e=>set("floor",e.target.value)}>{FLOORS.map(f=><option key={f}>{f}</option>)}</select></Field>
-        <Field label="Specific Location"><input style={inputStyle} value={form.location} onChange={e=>set("location",e.target.value)} placeholder="e.g. NW Corner, Room 204" /></Field>
-        <Field label="Unit Status"><select style={selectStyle} value={form.status} onChange={e=>set("status",e.target.value)}>{UNIT_STATUS.map(s=><option key={s}>{s}</option>)}</select></Field>
-        <Field label="Install Date"><input type="date" style={inputStyle} value={form.installDate} onChange={e=>set("installDate",e.target.value)} /></Field>
-        <Field label="Last PM Date"><input type="date" style={inputStyle} value={form.lastPM} onChange={e=>handleLastPM(e.target.value)} /></Field>
-        <Field label="Next PM (auto-set)"><input type="date" style={{ ...inputStyle, color:form.nextPM?"#22c55e":"#666" }} value={form.nextPM} onChange={e=>set("nextPM",e.target.value)} /></Field>
-        <Field label="PM Status"><select style={selectStyle} value={form.pmStatus} onChange={e=>set("pmStatus",e.target.value)}>{PM_STATUS.map(s=><option key={s}>{s}</option>)}</select></Field>
-      </div>
-      <Field label="Notes / Comments"><textarea style={textareaStyle} value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="Known issues, special instructions, technician notes..." /></Field>
-      <div style={{ display:"flex", gap:"0.75rem", justifyContent:"flex-end", marginTop:"0.5rem" }}>
-        <button onClick={onClose} style={{ background:"none", border:"1px solid #333", color:"#777", padding:"0.5rem 1.1rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.75rem" }}>CANCEL</button>
-        <button onClick={()=>{ if(!form.serialNumber||!form.make){ alert("Please fill in Serial Number and Make."); return; } onSave(form); }} style={{ background:"#f59e0b", border:"none", color:"#000", padding:"0.5rem 1.25rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.78rem", fontWeight:"bold" }}>{unit?"UPDATE UNIT":"REGISTER UNIT"}</button>
-      </div>
-    </>
-  );
-}
-
-function LogForm({ onSave, onClose }) {
-  const [form, setForm] = useState({ type:"PM", date:new Date().toISOString().split("T")[0], tech:"", description:"", refrigerantAdded:"", pressure:"" });
-  const set = (k,v) => setForm(f=>({ ...f, [k]:v }));
-  const isRefrigerant = form.type==="Refrigerant" || /leak|low pressure|refrigerant|freon/i.test(form.description);
-  return (
-    <>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 1rem" }}>
-        <Field label="Entry Type"><select style={selectStyle} value={form.type} onChange={e=>set("type",e.target.value)}>{LOG_TYPES.map(t=><option key={t}>{t}</option>)}</select></Field>
-        <Field label="Date"><input type="date" style={inputStyle} value={form.date} onChange={e=>set("date",e.target.value)} /></Field>
-        <Field label="Tech Initials (2 letters)">
-          <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
-            <input style={{ ...inputStyle, textTransform:"uppercase", letterSpacing:"0.2em", fontSize:"1rem", fontWeight:"bold", textAlign:"center", width:"72px", flexShrink:0 }} value={form.tech} maxLength={2} onChange={e=>set("tech",e.target.value.toUpperCase().replace(/[^A-Z]/g,""))} placeholder="JD" />
-            {form.tech.length===2 && <div style={{ width:"34px", height:"34px", borderRadius:"50%", background:"#f59e0b", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.75rem", fontWeight:"bold", color:"#000", flexShrink:0 }}>{form.tech}</div>}
-            <span style={{ fontSize:"0.65rem", color:"#555" }}>First 2 letters of your name</span>
-          </div>
-        </Field>
-        {isRefrigerant && <>
-          <Field label="Refrigerant Added (lbs)"><input style={inputStyle} type="number" step="0.1" value={form.refrigerantAdded} onChange={e=>set("refrigerantAdded",e.target.value)} placeholder="e.g. 2.5" /></Field>
-          <Field label="System Pressure (PSI)"><input style={inputStyle} type="number" value={form.pressure} onChange={e=>set("pressure",e.target.value)} placeholder="e.g. 150" /></Field>
-        </>}
-      </div>
-      <Field label="Description *"><textarea style={textareaStyle} value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Describe work done, parts replaced, issues found..." /></Field>
-      {form.type==="PM" && <div style={{ background:"#0a1a0a", border:"1px solid #1a3a1a", borderRadius:"3px", padding:"0.65rem", marginBottom:"0.85rem", fontSize:"0.75rem", color:"#4ade80" }}>✅ Logging a PM will automatically schedule the next PM in 4 months.</div>}
-      <div style={{ display:"flex", gap:"0.75rem", justifyContent:"flex-end" }}>
-        <button onClick={onClose} style={{ background:"none", border:"1px solid #333", color:"#777", padding:"0.5rem 1.1rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.75rem" }}>CANCEL</button>
-        <button onClick={()=>{ if(form.description) onSave(form); }} style={{ background:form.type==="PM"?"#22c55e":form.type==="Emergency"?"#ef4444":"#3b82f6", border:"none", color:"#000", padding:"0.5rem 1.25rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.78rem", fontWeight:"bold" }}>SAVE LOG</button>
-      </div>
-    </>
-  );
-}
-
-function App() {
-  const [units, setUnits] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [dbError, setDbError] = useState("");
-  const [search, setSearch] = useState("");
-  const [filterFloor, setFilterFloor] = useState("All");
-  const [filterStatus, setFilterStatus] = useState("All");
-  const [modal, setModal] = useState(null);
-  const [selectedUnit, setSelectedUnit] = useState(null);
-  const [addingLog, setAddingLog] = useState(false);
-
-  const loadUnits = useCallback(async () => {
-    setLoading(true); setDbError("");
-    try { const data = await dbGetUnits(); setUnits(data); setSelectedUnit(sel => sel ? data.find(u=>u.id===sel.id)||null : null); }
-    catch(e) { setDbError("Could not connect: " + e.message); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadUnits(); }, [loadUnits]);
-
-  const saveUnit = async (form) => {
-    setSaving(true);
-    const safeForm = { ...form };
-    if (safeForm.photoBase64?.length > 500000) safeForm.photoBase64 = "";
-    if (safeForm.diagramBase64?.length > 500000) safeForm.diagramBase64 = "";
-    try {
-      if (modal?.unit) { const updated = { ...modal.unit, ...safeForm }; await dbUpdateUnit(updated); setUnits(us=>us.map(u=>u.id===updated.id?updated:u)); setSelectedUnit(updated); }
-      else { const newUnit = { ...safeForm, id:Date.now().toString(), logs:[], createdAt:new Date().toISOString() }; await dbSaveUnit(newUnit); setUnits(us=>[...us,newUnit]); }
-      setModal(null);
-    } catch(e) { alert("Save failed: " + e.message); }
-    setSaving(false);
-  };
-
-  const deleteUnit = async (id) => {
-    if (!confirm("Delete this unit and all its history?")) return;
-    try { await dbDeleteUnit(id); setUnits(us=>us.filter(u=>u.id!==id)); setSelectedUnit(null); }
-    catch(e) { alert("Delete failed: " + e.message); }
-  };
-
-  const saveLog = async (log) => {
-    const entry = { ...log, id:Date.now().toString() };
-    const unit = units.find(u=>u.id===selectedUnit.id);
-    const logs = [...(unit.logs||[]), entry];
-    let updated = { ...unit, logs };
-    if (log.type==="PM" && log.date) { updated.lastPM=log.date; updated.nextPM=addMonths(log.date,4); updated.pmStatus="Current"; }
-    try { await dbUpdateUnit(updated); setUnits(us=>us.map(u=>u.id===updated.id?updated:u)); setSelectedUnit(updated); }
-    catch(e) { alert("Save failed: " + e.message); }
-    setAddingLog(false);
-  };
-
-  const deleteLog = async (logIdx) => {
-    const unit = units.find(u=>u.id===selectedUnit.id);
-    const updated = { ...unit, logs:unit.logs.filter((_,i)=>i!==logIdx) };
-    try { await dbUpdateUnit(updated); setUnits(us=>us.map(u=>u.id===updated.id?updated:u)); setSelectedUnit(updated); }
-    catch(e) { alert("Delete failed: " + e.message); }
-  };
-
-  const filtered = units.filter(u => {
-    const q = search.toLowerCase();
-    return (!q || [u.serialNumber,u.make,u.model,u.location,u.floor].some(v=>v?.toLowerCase().includes(q))) && (filterFloor==="All"||u.floor===filterFloor) && (filterStatus==="All"||u.status===filterStatus);
-  });
-
-  const counts = UNIT_STATUS.reduce((acc,s)=>({ ...acc, [s]:units.filter(u=>u.status===s).length }),{});
-  const criticalUnits = units.filter(u=>analyzePatterns(u).some(p=>p.level==="critical")).length;
-
-  return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0a", color:"#e5e5e5", fontFamily:"'Courier New',monospace" }}>
-      {/* Header */}
-      <div style={{ background:"#0f0f0f", borderBottom:"2px solid #f59e0b", padding:"0.75rem 1.25rem", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:"0.5rem" }}>
-        <div>
-          <div style={{ fontSize:"0.95rem", fontWeight:"bold", letterSpacing:"0.18em", color:"#f59e0b" }}>⚙ HVAC TRACKER</div>
-          <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", flexWrap:"wrap" }}>
-            <div style={{ fontSize:"0.58rem", color:"#555", letterSpacing:"0.1em" }}>HVAC MAINTENANCE MANAGEMENT SYSTEM</div>
-            {loading && <span style={{ fontSize:"0.58rem", color:"#f59e0b" }}>⏳ LOADING...</span>}
-            {saving && <span style={{ fontSize:"0.58rem", color:"#22c55e" }}>💾 SAVING...</span>}
-            {!loading && !saving && <span style={{ fontSize:"0.58rem", color:"#22c55e" }}>☁ CLOUD SYNC ON</span>}
-          </div>
-          {dbError && <div style={{ fontSize:"0.62rem", color:"#f87171", marginTop:"2px" }}>⚠ {dbError} <button onClick={loadUnits} style={{ background:"none", border:"none", color:"#f59e0b", cursor:"pointer", fontSize:"0.62rem", textDecoration:"underline" }}>Retry</button></div>}
-        </div>
-        <div style={{ display:"flex", gap:"0.75rem", alignItems:"center", flexWrap:"wrap" }}>
-          {criticalUnits > 0 && <div style={{ background:"#2a0a0a", border:"1px solid #5a1010", borderRadius:"3px", padding:"0.25rem 0.6rem", fontSize:"0.65rem", color:"#f87171" }}>🔴 {criticalUnits} NEED ATTENTION</div>}
-          {Object.entries(counts).map(([s,c])=><div key={s} style={{ textAlign:"center" }}><div style={{ fontSize:"1rem", fontWeight:"bold", color:STATUS_COLORS[s] }}>{c}</div><div style={{ fontSize:"0.5rem", color:"#555" }}>{s.toUpperCase()}</div></div>)}
-          <button onClick={loadUnits} style={{ background:"none", border:"1px solid #333", color:"#666", padding:"0.4rem 0.7rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.7rem" }}>↻</button>
-          <button onClick={()=>setModal({ type:"add" })} style={{ background:"#f59e0b", border:"none", color:"#000", padding:"0.45rem 0.9rem", borderRadius:"3px", cursor:"pointer", fontWeight:"bold", fontSize:"0.75rem" }}>+ ADD UNIT</button>
-        </div>
-      </div>
-
-      {loading && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:"1rem" }}><div style={{ fontSize:"2rem" }}>⚙</div><div style={{ color:"#f59e0b", fontSize:"0.85rem", letterSpacing:"0.15em" }}>LOADING FROM CLOUD...</div></div>}
-
-      {/* Filters */}
-      <div style={{ background:"#111", borderBottom:"1px solid #1e1e1e", padding:"0.6rem 1.25rem", display:"flex", gap:"0.6rem", flexWrap:"wrap", alignItems:"center" }}>
-        <input style={{ ...inputStyle, width:"200px" }} placeholder="🔍 Search serial, make, location..." value={search} onChange={e=>setSearch(e.target.value)} />
-        <select style={{ ...selectStyle, width:"140px" }} value={filterFloor} onChange={e=>setFilterFloor(e.target.value)}><option value="All">All Floors</option>{FLOORS.map(f=><option key={f}>{f}</option>)}</select>
-        <select style={{ ...selectStyle, width:"140px" }} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option value="All">All Statuses</option>{UNIT_STATUS.map(s=><option key={s}>{s}</option>)}</select>
-        <span style={{ marginLeft:"auto", fontSize:"0.65rem", color:"#444" }}>{filtered.length} / {units.length} UNITS</span>
-      </div>
-
-      {/* Body */}
-      <div style={{ display:"flex", height:"calc(100vh - 118px)" }}>
-        <div style={{ width:selectedUnit?"340px":"100%", borderRight:selectedUnit?"1px solid #1e1e1e":"none", overflowY:"auto", flexShrink:0 }}>
-          {filtered.length===0 ? (
-            <div style={{ padding:"3rem", textAlign:"center", color:"#333" }}>
-              <div style={{ fontSize:"2rem", marginBottom:"0.5rem" }}>⚙</div>
-              <div style={{ fontSize:"0.8rem" }}>{units.length===0?"No units yet — tap + ADD UNIT to start.":"No units match your search."}</div>
-            </div>
-          ) : filtered.map(unit => {
-            const alerts = analyzePatterns(unit);
-            const hasCritical = alerts.some(a=>a.level==="critical");
-            const hasWarn = alerts.some(a=>a.level==="warning");
-            return (
-              <div key={unit.id} onClick={()=>setSelectedUnit(unit)} style={{ padding:"0.8rem 1rem", borderBottom:"1px solid #141414", cursor:"pointer", background:selectedUnit?.id===unit.id?"#191409":"transparent", borderLeft:`3px solid ${hasCritical?"#ef4444":hasWarn?"#f59e0b":STATUS_COLORS[unit.status]||"#333"}` }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                  <div>
-                    <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
-                      <span style={{ fontSize:"0.82rem", fontWeight:"bold", color:"#f59e0b" }}>{unit.serialNumber}</span>
-                      {hasCritical && <span style={{ fontSize:"0.6rem" }}>🔴</span>}
-                      {!hasCritical && hasWarn && <span style={{ fontSize:"0.6rem" }}>🟡</span>}
-                    </div>
-                    <div style={{ fontSize:"0.75rem", color:"#aaa", marginTop:"2px" }}>{unit.make}{unit.model?` · ${unit.model}`:""}</div>
-                    <div style={{ fontSize:"0.65rem", color:"#666", marginTop:"2px" }}>📍 {unit.floor}{unit.location?` — ${unit.location}`:""}</div>
-                  </div>
-                  <div style={{ textAlign:"right", flexShrink:0 }}>
-                    <div style={{ fontSize:"0.62rem", color:STATUS_COLORS[unit.status] }}>{unit.status.toUpperCase()}</div>
-                    <div style={{ fontSize:"0.58rem", color:"#444", marginTop:"3px" }}>{unit.logs?.length||0} logs</div>
-                    {unit.nextPM && <div style={{ fontSize:"0.58rem", color:"#555", marginTop:"2px" }}>PM {formatDate(unit.nextPM)}</div>}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {selectedUnit && (
-          <div style={{ flex:1, overflowY:"auto", padding:"1rem 1.25rem", minWidth:0 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"0.85rem" }}>
-              <div>
-                <div style={{ fontSize:"0.95rem", color:"#f59e0b", fontWeight:"bold", letterSpacing:"0.1em" }}>{selectedUnit.serialNumber}</div>
-                <div style={{ fontSize:"0.7rem", color:"#666" }}>{selectedUnit.make} {selectedUnit.model} · {selectedUnit.floor}</div>
-              </div>
-              <div style={{ display:"flex", gap:"0.4rem" }}>
-                <button onClick={()=>deleteUnit(selectedUnit.id)} style={{ background:"none", border:"1px solid #2a0a0a", color:"#ef4444", padding:"0.3rem 0.65rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.65rem" }}>DELETE</button>
-                <button onClick={()=>setSelectedUnit(null)} style={{ background:"none", border:"1px solid #2a2a2a", color:"#666", padding:"0.3rem 0.65rem", borderRadius:"3px", cursor:"pointer", fontSize:"0.65rem" }}>CLOSE</button>
-              </div>
-            </div>
-            <UnitDetail unit={selectedUnit} onEdit={()=>setModal({ type:"edit", unit:selectedUnit })} onAddLog={()=>setAddingLog(true)} onDeleteLog={deleteLog} />
-          </div>
-        )}
-      </div>
-
-      {modal?.type==="add" && <Modal title="Register New AC Unit" onClose={()=>setModal(null)}><UnitForm onSave={saveUnit} onClose={()=>setModal(null)} /></Modal>}
-      {modal?.type==="edit" && <Modal title={`Edit — ${modal.unit.serialNumber}`} onClose={()=>setModal(null)}><UnitForm unit={modal.unit} onSave={saveUnit} onClose={()=>setModal(null)} /></Modal>}
-      {addingLog && selectedUnit && <Modal title={`Service Log — ${selectedUnit.serialNumber}`} onClose={()=>setAddingLog(false)}><LogForm onSave={saveLog} onClose={()=>setAddingLog(false)} /></Modal>}
     </div>
-  );
+    <div style={{marginBottom:"1rem",border:"1px dashed #1a3a2a",borderRadius:"4px",padding:"0.85rem",background:"#080d0a"}}>
+      <div style={{fontSize:"0.62rem",color:"#4a8a6a",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"0.6rem"}}>WIRING / UNIT DIAGRAM (for AI Troubleshooting)</div>
+      <div style={{display:"flex",gap:"0.75rem",alignItems:"flex-start",flexWrap:"wrap"}}>
+        {diagPreview&&<img src={diagPreview} style={{width:"88px",height:"88px",objectFit:"cover",borderRadius:"3px",border:"1px solid #1a3a2a",flexShrink:0}}/>}
+        <div style={{flex:1,minWidth:"160px"}}>
+          <label style={{display:"inline-block",background:"#0a1a12",border:"1px solid #1a4a2a",color:"#4ade80",padding:"0.4rem 0.85rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.73rem"}}>
+            {diagPreview?"CHANGE DIAGRAM":"UPLOAD DIAGRAM"}
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={handleDiagram}/>
+          </label>
+          {diagPreview&&<div style={{fontSize:"0.7rem",color:"#22c55e",marginTop:"0.4rem"}}>Diagram saved</div>}
+          {!diagPreview&&<div style={{fontSize:"0.67rem",color:"#2a5a3a",marginTop:"0.4rem"}}>Upload wiring schematic for precise AI troubleshooting.</div>}
+        </div>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+      <Field label="Serial Number *"><input style={INP} value={form.serialNumber} onChange={function(e){set("serialNumber",e.target.value)}} placeholder="e.g. AC-2024-001"/></Field>
+      <Field label="Make / Brand *">
+        <input style={INP} list="makes-list" value={form.make} onChange={function(e){handleMake(e.target.value)}} placeholder="e.g. Carrier, Trane"/>
+        <datalist id="makes-list">{savedMakes.map(function(m){return <option key={m} value={m}/>})}</datalist>
+      </Field>
+      <Field label="Model">
+        <input style={INP} list="models-list" value={form.model} onChange={function(e){set("model",e.target.value)}} placeholder="e.g. 50XC060"/>
+        <datalist id="models-list">{savedModels.map(function(m){return <option key={m} value={m}/>})}</datalist>
+      </Field>
+      <Field label="Floor / Zone"><select style={SEL} value={form.floor} onChange={function(e){set("floor",e.target.value);set("zone","");}}>{FLOORS.map(function(f){return <option key={f}>{f}</option>})}</select></Field>
+      {getZones(form.floor).length>0&&<Field label="Suite">
+        <select style={SEL} value={form.zone||""} onChange={function(e){set("zone",e.target.value)}}>
+          <option value="">-- Select Zone --</option>
+          {getZones(form.floor).map(function(z){return <option key={z} value={z}>{z}</option>})}
+        </select>
+      </Field>}
+      <Field label="Room / Cubicle"><input style={INP} value={form.location} onChange={function(e){set("location",e.target.value)}} placeholder="e.g. Room 204, Cubicle B3"/></Field>
+      <Field label="Unit Status"><select style={SEL} value={form.status} onChange={function(e){set("status",e.target.value)}}>{UNIT_STATUS.map(function(s){return <option key={s}>{s}</option>})}</select></Field>
+      <Field label="Install Date"><input type="date" style={INP} value={form.installDate} onChange={function(e){set("installDate",e.target.value)}}/></Field>
+      <Field label="Last PM Date"><input type="date" style={INP} value={form.lastPM} onChange={function(e){handleLastPM(e.target.value)}}/></Field>
+      <Field label="Next PM (auto-set)"><input type="date" style={Object.assign({},INP,{color:form.nextPM?"#22c55e":"#666"})} value={form.nextPM} onChange={function(e){set("nextPM",e.target.value)}}/></Field>
+      <Field label="PM Status"><select style={SEL} value={form.pmStatus} onChange={function(e){set("pmStatus",e.target.value)}}>{PM_LIST.map(function(s){return <option key={s}>{s}</option>})}</select></Field>
+    </div>
+    <div style={{borderTop:"1px solid #222",marginTop:"0.5rem",paddingTop:"1rem",marginBottom:"0.5rem"}}>
+      <div style={{fontSize:"0.65rem",color:"#f59e0b",letterSpacing:"0.12em",marginBottom:"0.75rem"}}>TECHNICAL SPECIFICATIONS</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+        <Field label="Volts"><input style={INP} value={form.volts} onChange={function(e){set("volts",e.target.value)}} placeholder="e.g. 208/230"/></Field>
+        <Field label="Hz"><input style={INP} value={form.hz} onChange={function(e){set("hz",e.target.value)}} placeholder="e.g. 60"/></Field>
+        <Field label="Comp RLA (amps)"><input style={INP} type="number" step="0.1" value={form.compRLA} onChange={function(e){set("compRLA",e.target.value)}} placeholder="e.g. 12.5"/></Field>
+        <Field label="LRA (amps)"><input style={INP} type="number" step="0.1" value={form.lra} onChange={function(e){set("lra",e.target.value)}} placeholder="e.g. 68"/></Field>
+        <Field label="Evap Fan Amps"><input style={INP} type="number" step="0.1" value={form.evapFanAmps} onChange={function(e){set("evapFanAmps",e.target.value)}} placeholder="e.g. 1.8"/></Field>
+        <Field label="Refrigerant Type"><input style={INP} value={form.refrigerantType} onChange={function(e){set("refrigerantType",e.target.value)}} placeholder="e.g. R-410A"/></Field>
+        <Field label="Total Charge (Ozs)"><input style={INP} type="number" step="0.1" value={form.totalCharge} onChange={function(e){set("totalCharge",e.target.value)}} placeholder="e.g. 4.5"/></Field>
+        <Field label="High Side PSI"><input style={INP} type="number" value={form.highSidePSI} onChange={function(e){set("highSidePSI",e.target.value)}} placeholder="e.g. 400"/></Field>
+        <Field label="Low Side PSI"><input style={INP} type="number" value={form.lowSidePSI} onChange={function(e){set("lowSidePSI",e.target.value)}} placeholder="e.g. 120"/></Field>
+      </div>
+    </div>
+    <Field label="Notes / Comments"><textarea style={TA} value={form.notes} onChange={function(e){set("notes",e.target.value)}} placeholder="Known issues, special instructions..."/></Field>
+    <div style={{display:"flex",gap:"0.75rem",justifyContent:"flex-end",marginTop:"0.5rem"}}>
+      <button onClick={props.onClose} style={{background:"none",border:"1px solid #333",color:"#777",padding:"0.5rem 1.1rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.75rem"}}>CANCEL</button>
+      <button onClick={handleSave} style={{background:"#f59e0b",border:"none",color:"#000",padding:"0.5rem 1.25rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.78rem",fontWeight:"bold"}}>{unit?"UPDATE UNIT":"REGISTER UNIT"}</button>
+    </div>
+  </div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+function LogForm(props){
+  const [form,setForm]=useState({type:"PM",date:localDate(),tech:"",description:"",refrigerantAdded:"",pressure:""});
+  function set(k,v){setForm(function(f){return Object.assign({},f,{[k]:v})})}
+  const isRef=form.type==="Refrigerant"||/leak|low pressure|refrigerant|freon/i.test(form.description);
+  return <div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+      <Field label="Entry Type"><select style={SEL} value={form.type} onChange={function(e){set("type",e.target.value)}}>{LOG_TYPES.map(function(t){return <option key={t}>{t}</option>})}</select></Field>
+      <Field label="Date"><input type="date" style={INP} value={form.date} onChange={function(e){set("date",e.target.value)}}/></Field>
+      <Field label="Tech Initials">
+        <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+          <input style={Object.assign({},INP,{textTransform:"uppercase",letterSpacing:"0.2em",fontSize:"1rem",fontWeight:"bold",textAlign:"center",width:"72px",flexShrink:0})} value={form.tech} maxLength={2} onChange={function(e){set("tech",e.target.value.toUpperCase().replace(/[^A-Z]/g,""))}} placeholder="JD"/>
+          {form.tech.length===2&&<div style={{width:"34px",height:"34px",borderRadius:"50%",background:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",fontWeight:"bold",color:"#000"}}>{form.tech}</div>}
+          <span style={{fontSize:"0.65rem",color:"#555"}}>First 2 letters</span>
+        </div>
+      </Field>
+      {isRef&&<Field label="Refrigerant Added (lbs)"><input style={INP} type="number" step="0.1" value={form.refrigerantAdded} onChange={function(e){set("refrigerantAdded",e.target.value)}} placeholder="e.g. 2.5"/></Field>}
+      {isRef&&<Field label="System Pressure (PSI)"><input style={INP} type="number" value={form.pressure} onChange={function(e){set("pressure",e.target.value)}} placeholder="e.g. 150"/></Field>}
+    </div>
+    <Field label="Description *">
+      <textarea style={TA} value={form.description} onChange={function(e){set("description",e.target.value)}} placeholder="Describe work done, parts replaced (compressor, capacitor, relay...), issues found..."/>
+    </Field>
+    {form.type==="PM"&&<div style={{background:"#0a1a0a",border:"1px solid #1a3a1a",borderRadius:"3px",padding:"0.65rem",marginBottom:"0.85rem",fontSize:"0.75rem",color:"#4ade80"}}>PM logged = next PM auto-scheduled in 4 months.</div>}
+    <div style={{display:"flex",gap:"0.75rem",justifyContent:"flex-end"}}>
+      <button onClick={props.onClose} style={{background:"none",border:"1px solid #333",color:"#777",padding:"0.5rem 1.1rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.75rem"}}>CANCEL</button>
+      <button onClick={function(){if(form.description)props.onSave(form)}} style={{background:form.type==="PM"?"#22c55e":form.type==="Emergency"?"#ef4444":"#3b82f6",border:"none",color:"#000",padding:"0.5rem 1.25rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.78rem",fontWeight:"bold"}}>SAVE LOG</button>
+    </div>
+  </div>;
+}
+
+function AuthScreen(props){
+  const [mode,setMode]=useState("login");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [name,setName]=useState("");
+  const [role,setRole]=useState("technician");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [success,setSuccess]=useState("");
+  function handle(){
+    setError("");setSuccess("");setLoading(true);
+    if(mode==="login"){
+      authSignIn(email,password).then(function(s){saveSession(s);props.onLogin(s)}).catch(function(e){setError(e.message);setLoading(false)});
+    }else{
+      authSignUp(email,password,name,role).then(function(){setSuccess("Account created! You can now log in.");setMode("login");setLoading(false)}).catch(function(e){setError(e.message);setLoading(false)});
+    }
+  }
+  return <div style={{minHeight:"100vh",background:"#0a0a0a",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+    <div style={{width:"100%",maxWidth:"380px"}}>
+      <div style={{textAlign:"center",marginBottom:"2rem"}}>
+        <div style={{fontSize:"1.4rem",fontWeight:"bold",color:"#f59e0b",letterSpacing:"0.2em"}}>HVACT</div>
+        <div style={{fontSize:"0.62rem",color:"#555",letterSpacing:"0.12em",marginTop:"0.3rem"}}>HVAC MAINTENANCE MANAGEMENT SYSTEM</div>
+      </div>
+      <div style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:"6px",padding:"1.5rem"}}>
+        <div style={{display:"flex",marginBottom:"1.25rem",border:"1px solid #222",borderRadius:"4px",overflow:"hidden"}}>
+          {["login","signup"].map(function(m){return <button key={m} onClick={function(){setMode(m);setError("");setSuccess("")}} style={{flex:1,padding:"0.5rem",background:mode===m?"#f59e0b":"none",border:"none",color:mode===m?"#000":"#666",cursor:"pointer",fontSize:"0.75rem",fontWeight:mode===m?"bold":"normal",textTransform:"uppercase"}}>{m==="login"?"LOG IN":"SIGN UP"}</button>})}
+        </div>
+        {mode==="signup"&&<div>
+          <div style={{marginBottom:"0.75rem"}}>
+            <label style={{display:"block",fontSize:"0.62rem",color:"#777",letterSpacing:"0.1em",marginBottom:"0.3rem"}}>FULL NAME</label>
+            <input style={Object.assign({},INP,{border:"1px solid #2e2e2e"})} value={name} onChange={function(e){setName(e.target.value)}} placeholder="John Smith"/>
+          </div>
+          <div style={{marginBottom:"0.75rem"}}>
+            <label style={{display:"block",fontSize:"0.62rem",color:"#777",letterSpacing:"0.1em",marginBottom:"0.3rem"}}>ROLE</label>
+            <select style={Object.assign({},SEL,{border:"1px solid #2e2e2e"})} value={role} onChange={function(e){setRole(e.target.value)}}>
+              <option value="technician">Technician</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>}
+        <div style={{marginBottom:"0.75rem"}}>
+          <label style={{display:"block",fontSize:"0.62rem",color:"#777",letterSpacing:"0.1em",marginBottom:"0.3rem"}}>EMAIL</label>
+          <input type="email" style={Object.assign({},INP,{border:"1px solid #2e2e2e"})} value={email} onChange={function(e){setEmail(e.target.value)}} placeholder="you@company.com"/>
+        </div>
+        <div style={{marginBottom:"1rem"}}>
+          <label style={{display:"block",fontSize:"0.62rem",color:"#777",letterSpacing:"0.1em",marginBottom:"0.3rem"}}>PASSWORD</label>
+          <input type="password" style={Object.assign({},INP,{border:"1px solid #2e2e2e"})} value={password} onChange={function(e){setPassword(e.target.value)}} placeholder="Min 6 characters" onKeyDown={function(e){if(e.key==="Enter")handle()}}/>
+        </div>
+        {error&&<div style={{background:"#1a0505",border:"1px solid #5a1010",borderRadius:"3px",padding:"0.6rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.75rem",color:"#f87171"}}>{error}</div>}
+        {success&&<div style={{background:"#051a09",border:"1px solid #105a20",borderRadius:"3px",padding:"0.6rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.75rem",color:"#4ade80"}}>{success}</div>}
+        <button onClick={handle} disabled={loading} style={{width:"100%",background:loading?"#333":"#f59e0b",border:"none",color:loading?"#666":"#000",padding:"0.6rem",borderRadius:"3px",cursor:loading?"not-allowed":"pointer",fontWeight:"bold",fontSize:"0.82rem"}}>
+          {loading?"Please wait...":mode==="login"?"LOG IN":"CREATE ACCOUNT"}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
+function App(){
+  const [session,setSession]=useState(function(){return getSession()});
+  const [user,setUser]=useState(null);
+  const [units,setUnits]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [dbError,setDbError]=useState("");
+  const [search,setSearch]=useState("");
+  const [filterFloor,setFilterFloor]=useState("All");
+  const [filterStatus,setFilterStatus]=useState("All");
+  const [modal,setModal]=useState(null);
+  const [selectedUnit,setSelectedUnit]=useState(null);
+  const [addingLog,setAddingLog]=useState(false);
+
+  const token=session?session.access_token:"";
+  const isAdmin=user&&user.user_metadata&&user.user_metadata.role==="admin";
+  const userName=user?(user.user_metadata&&user.user_metadata.name?user.user_metadata.name:user.email):"";
+
+  useEffect(function(){
+    if(token){authGetUser(token).then(function(u){if(u)setUser(u);else{clearSess();setSession(null)}})}
+    else setLoading(false);
+  },[token]);
+
+  const loadUnits=useCallback(function(){
+    if(!token)return;
+    setLoading(true);setDbError("");
+    dbGet(token).then(function(data){setUnits(data);setSelectedUnit(function(sel){return sel?data.find(function(u){return u.id===sel.id})||null:null})}).catch(function(e){setDbError("Could not connect: "+e.message)}).finally(function(){setLoading(false)});
+  },[token]);
+
+  useEffect(function(){if(session)loadUnits();else setLoading(false)},[loadUnits,session]);
+
+  function handleLogin(s){saveSession(s);setSession(s)}
+  function handleLogout(){if(token)authSignOut(token);clearSess();setSession(null);setUser(null);setUnits([])}
+
+  if(!session)return <AuthScreen onLogin={handleLogin}/>;
+
+  function saveUnit(form){
+    setSaving(true);
+    if(modal&&modal.unit){
+      const updated=Object.assign({},modal.unit,form);
+      dbUpdate(token,updated).then(function(){setUnits(function(us){return us.map(function(u){return u.id===updated.id?updated:u})});setSelectedUnit(updated);setModal(null)}).catch(function(e){alert("Save failed: "+e.message)}).finally(function(){setSaving(false)});
+    }else{
+      const n=Object.assign({},form,{id:Date.now().toString(),logs:[],createdAt:new Date().toISOString()});
+      dbSave(token,n).then(function(){setUnits(function(us){return us.concat([n])});setModal(null)}).catch(function(e){alert("Save failed: "+e.message)}).finally(function(){setSaving(false)});
+    }
+  }
+
+  function deleteUnit(id){
+    if(!confirm("Delete this unit and all history?"))return;
+    dbDelete(token,id).then(function(){setUnits(function(us){return us.filter(function(u){return u.id!==id})});setSelectedUnit(null)}).catch(function(e){alert("Delete failed: "+e.message)});
+  }
+
+  function saveLog(log){
+    const entry=Object.assign({},log,{id:Date.now().toString()});
+    const unit=units.find(function(u){return u.id===selectedUnit.id});
+    const logs=(unit.logs||[]).concat([entry]);
+    let updated=Object.assign({},unit,{logs:logs});
+    if(log.type==="PM"&&log.date){updated.lastPM=log.date;updated.nextPM=addMonths(log.date,4);updated.pmStatus="Current"}
+    dbUpdate(token,updated).then(function(){setUnits(function(us){return us.map(function(u){return u.id===updated.id?updated:u})});setSelectedUnit(updated)}).catch(function(e){alert("Save failed: "+e.message)});
+    setAddingLog(false);
+  }
+
+  function deleteLog(idx){
+    const unit=units.find(function(u){return u.id===selectedUnit.id});
+    const updated=Object.assign({},unit,{logs:unit.logs.filter(function(_,i){return i!==idx})});
+    dbUpdate(token,updated).then(function(){setUnits(function(us){return us.map(function(u){return u.id===updated.id?updated:u})});setSelectedUnit(updated)}).catch(function(e){alert("Delete failed: "+e.message)});
+  }
+
+  const filtered=units.filter(function(u){
+    const q=search.toLowerCase();
+    return(!q||[u.serialNumber,u.make,u.model,u.location,u.floor].some(function(v){return v&&v.toLowerCase().includes(q)}))&&(filterFloor==="All"||u.floor===filterFloor)&&(filterStatus==="All"||u.status===filterStatus);
+  });
+  const counts=UNIT_STATUS.reduce(function(acc,s){acc[s]=units.filter(function(u){return u.status===s}).length;return acc},{});
+  const criticalUnits=units.filter(function(u){return analyze(u).some(function(p){return p.level==="critical"})}).length;
+
+  return <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#e5e5e5",fontFamily:"Courier New,monospace"}}>
+    <div style={{background:"#0f0f0f",borderBottom:"2px solid #f59e0b",padding:"0.75rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem"}}>
+      <div>
+        <div style={{fontSize:"0.95rem",fontWeight:"bold",letterSpacing:"0.18em",color:"#f59e0b"}}>HVACT</div>
+        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+          <div style={{fontSize:"0.58rem",color:"#555",letterSpacing:"0.1em"}}>HVAC MAINTENANCE MANAGEMENT SYSTEM</div>
+          {loading&&<span style={{fontSize:"0.58rem",color:"#f59e0b"}}>Loading...</span>}
+          {saving&&<span style={{fontSize:"0.58rem",color:"#22c55e"}}>Saving...</span>}
+          {!loading&&!saving&&<span style={{fontSize:"0.58rem",color:"#22c55e"}}>CLOUD SYNC ON</span>}
+        </div>
+        {dbError&&<div style={{fontSize:"0.62rem",color:"#f87171",marginTop:"2px"}}>{dbError} <button onClick={loadUnits} style={{background:"none",border:"none",color:"#f59e0b",cursor:"pointer",fontSize:"0.62rem",textDecoration:"underline"}}>Retry</button></div>}
+      </div>
+      <div style={{display:"flex",gap:"0.75rem",alignItems:"center",flexWrap:"wrap"}}>
+        {criticalUnits>0&&<div style={{background:"#2a0a0a",border:"1px solid #5a1010",borderRadius:"3px",padding:"0.25rem 0.6rem",fontSize:"0.65rem",color:"#f87171"}}>{criticalUnits} NEED ATTENTION</div>}
+        {Object.entries(counts).map(function(entry){return <div key={entry[0]} style={{textAlign:"center"}}><div style={{fontSize:"1rem",fontWeight:"bold",color:SC[entry[0]]}}>{entry[1]}</div><div style={{fontSize:"0.5rem",color:"#555"}}>{entry[0].toUpperCase()}</div></div>})}
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:"0.7rem",color:isAdmin?"#f59e0b":"#22c55e",fontWeight:"bold"}}>{isAdmin?"ADMIN":"TECH"}</div>
+          <div style={{fontSize:"0.55rem",color:"#555",maxWidth:"70px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{userName}</div>
+        </div>
+        <button onClick={loadUnits} style={{background:"none",border:"1px solid #333",color:"#666",padding:"0.4rem 0.7rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.7rem"}}>↻</button>
+        <button onClick={function(){setModal({type:"add"})}} style={{background:"#f59e0b",border:"none",color:"#000",padding:"0.45rem 0.9rem",borderRadius:"3px",cursor:"pointer",fontWeight:"bold",fontSize:"0.75rem"}}>+ ADD UNIT</button>
+        <button onClick={handleLogout} style={{background:"none",border:"1px solid #444",color:"#888",padding:"0.45rem 0.75rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.7rem"}}>LOG OUT</button>
+      </div>
+    </div>
+
+    {loading&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"1rem"}}><div style={{fontSize:"2rem"}}>⚙</div><div style={{color:"#f59e0b",fontSize:"0.85rem",letterSpacing:"0.15em"}}>LOADING FROM CLOUD...</div></div>}
+
+    <div style={{background:"#111",borderBottom:"1px solid #1e1e1e",padding:"0.6rem 1.25rem",display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center"}}>
+      <input style={Object.assign({},INP,{width:"200px"})} placeholder="Search serial, make, location..." value={search} onChange={function(e){setSearch(e.target.value)}}/>
+      <select style={Object.assign({},SEL,{width:"140px"})} value={filterFloor} onChange={function(e){setFilterFloor(e.target.value)}}><option value="All">All Floors</option>{FLOORS.map(function(f){return <option key={f}>{f}</option>})}</select>
+      <select style={Object.assign({},SEL,{width:"140px"})} value={filterStatus} onChange={function(e){setFilterStatus(e.target.value)}}><option value="All">All Statuses</option>{UNIT_STATUS.map(function(s){return <option key={s}>{s}</option>})}</select>
+      <span style={{marginLeft:"auto",fontSize:"0.65rem",color:"#444"}}>{filtered.length} / {units.length} UNITS</span>
+    </div>
+
+    <div style={{display:"flex",height:"calc(100vh - 118px)"}}>
+      <div style={{width:selectedUnit?"340px":"100%",borderRight:selectedUnit?"1px solid #1e1e1e":"none",overflowY:"auto",flexShrink:0}}>
+        {filtered.length===0?<div style={{padding:"3rem",textAlign:"center",color:"#333"}}><div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>⚙</div><div style={{fontSize:"0.8rem"}}>{units.length===0?"No units yet — tap + ADD UNIT to start.":"No units match your search."}</div></div>
+        :filtered.map(function(unit){
+          const alerts=analyze(unit);
+          const hasCrit=alerts.some(function(a){return a.level==="critical"});
+          const hasWarn=alerts.some(function(a){return a.level==="warning"});
+          const pc=countParts(unit.logs||[]);
+          const hasCritPart=PARTS.some(function(p){return pc[p.key]>=3});
+          const borderColor=hasCrit||hasCritPart?"#ef4444":hasWarn?"#f59e0b":SC[unit.status]||"#333";
+          return <div key={unit.id} onClick={function(){setSelectedUnit(unit)}} style={{padding:"0.8rem 1rem",borderBottom:"1px solid #141414",cursor:"pointer",background:selectedUnit&&selectedUnit.id===unit.id?"#191409":"transparent",borderLeft:"3px solid "+borderColor}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  <span style={{fontSize:"0.82rem",fontWeight:"bold",color:"#f59e0b"}}>{unit.serialNumber}</span>
+                  {(hasCrit||hasCritPart)&&<span>🔴</span>}
+                  {!(hasCrit||hasCritPart)&&hasWarn&&<span>🟡</span>}
+                </div>
+                <div style={{fontSize:"0.75rem",color:"#aaa",marginTop:"2px"}}>{unit.make}{unit.model?" · "+unit.model:""}</div>
+                <div style={{fontSize:"0.65rem",color:"#666",marginTop:"2px"}}>{unit.floor}{unit.zone?" › "+unit.zone:""}{unit.location?" — "+unit.location:""}</div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontSize:"0.62rem",color:SC[unit.status]}}>{unit.status.toUpperCase()}</div>
+                <div style={{fontSize:"0.58rem",color:"#444",marginTop:"3px"}}>{unit.logs?unit.logs.length:0} logs</div>
+                {unit.nextPM&&<div style={{fontSize:"0.58rem",color:"#555",marginTop:"2px"}}>PM {fmtDate(unit.nextPM)}</div>}
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>
+
+      {selectedUnit&&<div style={{flex:1,overflowY:"auto",padding:"1rem 1.25rem",minWidth:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.85rem"}}>
+          <div>
+            <div style={{fontSize:"0.95rem",color:"#f59e0b",fontWeight:"bold",letterSpacing:"0.1em"}}>{selectedUnit.serialNumber}</div>
+            <div style={{fontSize:"0.7rem",color:"#666"}}>{selectedUnit.make} {selectedUnit.model} — {selectedUnit.floor}</div>
+          </div>
+          <div style={{display:"flex",gap:"0.4rem"}}>
+            {isAdmin&&<button onClick={function(){deleteUnit(selectedUnit.id)}} style={{background:"none",border:"1px solid #2a0a0a",color:"#ef4444",padding:"0.3rem 0.65rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.65rem"}}>DELETE</button>}
+            <button onClick={function(){setSelectedUnit(null)}} style={{background:"none",border:"1px solid #2a2a2a",color:"#666",padding:"0.3rem 0.65rem",borderRadius:"3px",cursor:"pointer",fontSize:"0.65rem"}}>CLOSE</button>
+          </div>
+        </div>
+        <UnitDetail unit={selectedUnit} onEdit={function(){setModal({type:"edit",unit:selectedUnit})}} onAddLog={function(){setAddingLog(true)}} onDeleteLog={deleteLog} isAdmin={isAdmin}/>
+      </div>}
+    </div>
+
+    {modal&&modal.type==="add"&&<Modal title="Register New Unit" onClose={function(){setModal(null)}}><UnitForm onSave={saveUnit} onClose={function(){setModal(null)}}/></Modal>}
+    {modal&&modal.type==="edit"&&<Modal title={"Edit — "+modal.unit.serialNumber} onClose={function(){setModal(null)}}><UnitForm unit={modal.unit} onSave={saveUnit} onClose={function(){setModal(null)}}/></Modal>}
+    {addingLog&&selectedUnit&&<Modal title={"Service Log — "+selectedUnit.serialNumber} onClose={function(){setAddingLog(false)}}><LogForm onSave={saveLog} onClose={function(){setAddingLog(false)}}/></Modal>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
