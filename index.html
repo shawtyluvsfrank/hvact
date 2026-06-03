@@ -1246,32 +1246,44 @@ function App(){
               <div style={{fontWeight:600,marginBottom:"0.25rem"}}>{units.length===0?"No units yet":"No results"}</div>
               <div style={{fontSize:"0.82rem"}}>{units.length===0?"Click + Add Unit to get started":"Try adjusting your search or filters"}</div>
             </div>}
-            {!loading&&filtered.map(unit=>{
-              const score=calcHealth(unit);
-              const color=score>=75?"var(--green)":score>=50?"var(--amber)":score>=25?"var(--orange)":"var(--red)";
-              const alerts=analyze(unit);
-              const hasCrit=alerts.some(a=>a.level==="critical");
-              const hasWarn=alerts.some(a=>a.level==="warning");
-              const borderColor=hasCrit?"var(--red)":hasWarn?"var(--amber)":SC[unit.status]||"var(--border)";
-              return <div key={unit.id} className={"unit-item"+(selectedUnit?.id===unit.id?" selected":"")} style={{borderLeftColor:borderColor}} onClick={()=>setSelectedUnit(unit)}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"2px"}}>
-                      <span style={{fontFamily:"Space Mono,monospace",fontWeight:700,color:"var(--amber)",fontSize:"0.85rem"}}>{unit.serialNumber}</span>
-                      <span style={{fontSize:"0.65rem",fontWeight:700,color,background:color+"22",padding:"1px 5px",borderRadius:"99px"}}>{score}</span>
-                      {hasCrit&&<span>🔴</span>}{!hasCrit&&hasWarn&&<span>🟡</span>}
-                    </div>
-                    <div style={{fontSize:"0.78rem",color:"var(--text2)"}}>{unit.make}{unit.model?" · "+unit.model:""}</div>
-                    <div style={{fontSize:"0.68rem",color:"var(--text3)",marginTop:"2px"}}>{unit.floor}{unit.zone?" › "+unit.zone:""}{unit.location?" — "+unit.location:""}</div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0,marginLeft:"0.5rem"}}>
-                    <StatusBadge status={unit.status}/>
-                    <div style={{fontSize:"0.62rem",color:"var(--text3)",marginTop:"4px"}}>{unit.logs?.length||0} logs</div>
-                    {unit.nextPM&&<div style={{fontSize:"0.6rem",color:"var(--text3)",marginTop:"2px"}}>PM {fmtDate(unit.nextPM)}</div>}
-                  </div>
+            {!loading&&(()=>{
+              // Group by floor in FLOORS order
+              const grouped={};
+              FLOORS.forEach(f=>{grouped[f]=[]});
+              filtered.forEach(u=>{if(grouped[u.floor])grouped[u.floor].push(u);else{if(!grouped["Other"])grouped["Other"]=[];grouped["Other"].push(u)}});
+              return FLOORS.filter(f=>grouped[f]&&grouped[f].length>0).map(floor=><div key={floor}>
+                <div style={{padding:"0.5rem 1rem",background:"var(--surface2)",borderBottom:"1px solid var(--border)",borderTop:"1px solid var(--border)",position:"sticky",top:0,zIndex:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:"0.68rem",fontWeight:700,color:"var(--amber)",letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:"Space Mono,monospace"}}>{floor}</span>
+                  <span style={{fontSize:"0.62rem",color:"var(--text3)",background:"var(--surface3)",padding:"1px 8px",borderRadius:"99px"}}>{grouped[floor].length}</span>
                 </div>
-              </div>;
-            })}
+                {grouped[floor].map(unit=>{
+                  const score=calcHealth(unit);
+                  const color=score>=75?"var(--green)":score>=50?"var(--amber)":score>=25?"var(--orange)":"var(--red)";
+                  const alerts=analyze(unit);
+                  const hasCrit=alerts.some(a=>a.level==="critical");
+                  const hasWarn=alerts.some(a=>a.level==="warning");
+                  const borderColor=hasCrit?"var(--red)":hasWarn?"var(--amber)":SC[unit.status]||"var(--border)";
+                  return <div key={unit.id} className={"unit-item"+(selectedUnit?.id===unit.id?" selected":"")} style={{borderLeftColor:borderColor}} onClick={()=>setSelectedUnit(unit)}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"2px"}}>
+                          <span style={{fontFamily:"Space Mono,monospace",fontWeight:700,color:"var(--amber)",fontSize:"0.85rem"}}>{unit.serialNumber}</span>
+                          <span style={{fontSize:"0.65rem",fontWeight:700,color,background:color+"22",padding:"1px 5px",borderRadius:"99px"}}>{score}</span>
+                          {hasCrit&&<span>🔴</span>}{!hasCrit&&hasWarn&&<span>🟡</span>}
+                        </div>
+                        <div style={{fontSize:"0.78rem",color:"var(--text2)"}}>{unit.make}{unit.model?" · "+unit.model:""}</div>
+                        <div style={{fontSize:"0.68rem",color:"var(--text3)",marginTop:"2px"}}>{unit.zone?" Suite "+unit.zone:""}{unit.location?" — "+unit.location:""}</div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0,marginLeft:"0.5rem"}}>
+                        <StatusBadge status={unit.status}/>
+                        <div style={{fontSize:"0.62rem",color:"var(--text3)",marginTop:"4px"}}>{unit.logs?.length||0} logs</div>
+                        {unit.nextPM&&<div style={{fontSize:"0.6rem",color:"var(--text3)",marginTop:"2px"}}>PM {fmtDate(unit.nextPM)}</div>}
+                      </div>
+                    </div>
+                  </div>;
+                })}
+              </div>);
+            })()}
           </div>
           {selectedUnit&&<div style={{flex:1,overflowY:"auto",padding:"1.25rem",minWidth:0}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1rem"}} className="no-print">
