@@ -917,110 +917,7 @@ function LogForm({onSave,onClose}){
   </div>;
 }
 
-function HomeScreen({user,units,onNavigate,isAdmin}){
-  const userName=user?.user_metadata?.name||user?.email||"Technician";
-  const initials=userName.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
-  const now=new Date();
-  const timeStr=now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
-  const dateStr=now.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
-
-  const counts={
-    "Under Repair":units.filter(u=>u.status==="Under Repair").length,
-    "Needs PM":units.filter(u=>u.status==="Needs PM").length,
-    "Operational":units.filter(u=>u.status==="Operational").length,
-    "Ready for Install":units.filter(u=>u.status==="Ready for Install").length,
-    "Out of Service":units.filter(u=>u.status==="Out of Service").length,
-  };
-
-  const criticalUnits=units.filter(u=>analyze(u).some(a=>a.level==="critical")).length;
-  const recentLogs=units.flatMap(u=>(u.logs||[]).map(l=>({...l,unit:u}))).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
-
-  const menuItems=[
-    {label:"Under Repair",icon:"🔧",count:counts["Under Repair"],color:"var(--red)",status:"Under Repair"},
-    {label:"Preventive Maintenance",icon:"🛠",count:counts["Needs PM"],color:"var(--amber)",status:"Needs PM"},
-    {label:"Operational",icon:"✅",count:counts["Operational"],color:"var(--green)",status:"Operational"},
-    {label:"Ready for Install",icon:"📦",count:counts["Ready for Install"],color:"var(--blue)",status:"Ready for Install"},
-  ];
-
-  return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column"}}>
-    {/* Header */}
-    <div style={{background:"linear-gradient(135deg,#1a3a6b 0%,#0f2147 100%)",padding:"2rem 1.25rem 3rem",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:"-40px",right:"-40px",width:"160px",height:"160px",borderRadius:"50%",background:"rgba(255,255,255,0.05)"}}/>
-      <div style={{position:"absolute",top:"20px",right:"20px",width:"80px",height:"80px",borderRadius:"50%",background:"rgba(255,255,255,0.05)"}}/>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.5rem"}}>
-        <div style={{fontFamily:"Space Mono,monospace",fontSize:"1rem",fontWeight:700,color:"var(--amber)",letterSpacing:"0.15em"}}>HVACT</div>
-        <div style={{fontSize:"0.72rem",color:"rgba(255,255,255,0.5)",textAlign:"right"}}>
-          <div>{timeStr}</div>
-          <div>{dateStr}</div>
-        </div>
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:"1rem"}}>
-        <div style={{width:"64px",height:"64px",borderRadius:"50%",background:"rgba(255,255,255,0.15)",border:"2px solid rgba(255,255,255,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",fontWeight:700,color:"#fff",flexShrink:0}}>
-          {initials}
-        </div>
-        <div>
-          <div style={{fontSize:"1.2rem",fontWeight:700,color:"#fff"}}>{userName}</div>
-          <div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.6)",marginTop:"2px"}}>{isAdmin?"Admin — Full Access":"Technician"}</div>
-          <div style={{fontSize:"0.68rem",color:"rgba(255,255,255,0.4)",marginTop:"2px"}}>Refreshed {timeStr}</div>
-        </div>
-      </div>
-    </div>
-
-    {/* Stats bar */}
-    <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",display:"flex"}}>
-      <div style={{flex:1,padding:"1rem",textAlign:"center",borderRight:"1px solid var(--border)"}}>
-        <div style={{fontSize:"1.8rem",fontWeight:700,color:criticalUnits>0?"var(--red)":"var(--green)",fontFamily:"Space Mono,monospace"}}>{criticalUnits}</div>
-        <div style={{fontSize:"0.72rem",color:"var(--text3)"}}>Needs Attention</div>
-      </div>
-      <div style={{flex:1,padding:"1rem",textAlign:"center"}}>
-        <div style={{fontSize:"1.8rem",fontWeight:700,color:"var(--blue)",fontFamily:"Space Mono,monospace"}}>{units.length}</div>
-        <div style={{fontSize:"0.72rem",color:"var(--text3)"}}>Total Units</div>
-      </div>
-    </div>
-
-    {/* Menu items */}
-    <div style={{flex:1,overflowY:"auto"}}>
-      {menuItems.map((item,i)=><div key={item.label} onClick={()=>onNavigate("units",item.status)} style={{display:"flex",alignItems:"center",padding:"1.1rem 1.25rem",borderBottom:"1px solid var(--border)",cursor:"pointer",background:"var(--bg)",transition:"background 0.1s"}}
-        onMouseEnter={e=>e.currentTarget.style.background="var(--surface)"}
-        onMouseLeave={e=>e.currentTarget.style.background="var(--bg)"}>
-        <div style={{width:"40px",height:"40px",borderRadius:"10px",background:item.color+"22",border:"1px solid "+item.color+"44",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.1rem",flexShrink:0,marginRight:"1rem"}}>
-          {item.icon}
-        </div>
-        <div style={{flex:1}}>
-          <div style={{fontSize:"0.95rem",fontWeight:500,color:"var(--text)"}}>{item.label}</div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
-          {item.count>0&&<span style={{fontSize:"1.4rem",fontWeight:700,color:item.color,fontFamily:"Space Mono,monospace"}}>{item.count}</span>}
-          {item.count===0&&<span style={{fontSize:"1rem",color:"var(--text3)",fontFamily:"Space Mono,monospace"}}>0</span>}
-          <span style={{color:"var(--text3)",fontSize:"1rem"}}>›</span>
-        </div>
-      </div>)}
-
-      {/* Recent activity */}
-      {recentLogs.length>0&&<div style={{padding:"1.25rem"}}>
-        <div style={{fontSize:"0.72rem",color:"var(--text3)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"0.75rem",fontWeight:600}}>Recent Activity</div>
-        {recentLogs.map((log,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:"0.75rem",paddingBottom:"0.75rem",borderBottom:i<recentLogs.length-1?"1px solid var(--border)":"none",marginBottom:i<recentLogs.length-1?"0.75rem":"0"}}>
-          <div style={{width:"8px",height:"8px",borderRadius:"50%",background:TC[log.type]||"var(--text3)",marginTop:"5px",flexShrink:0}}/>
-          <div style={{flex:1}}>
-            <div style={{fontSize:"0.82rem",color:"var(--text)",fontWeight:500}}>{log.unit.serialNumber} — {log.type}</div>
-            <div style={{fontSize:"0.72rem",color:"var(--text3)",marginTop:"2px"}}>{log.description?.slice(0,60)}{log.description?.length>60?"...":""}</div>
-          </div>
-          <div style={{fontSize:"0.68rem",color:"var(--text3)",flexShrink:0}}>{fmtDate(log.date)}</div>
-        </div>)}
-      </div>}
-
-      {/* Bottom nav shortcuts */}
-      <div style={{display:"flex",borderTop:"1px solid var(--border)",background:"var(--surface)"}}>
-        {[{icon:"⚙️",label:"All Units",nav:"units",status:null},{icon:"📊",label:"Dashboard",nav:"dashboard"},{icon:"🔧",label:"Tools",nav:"tools"}].map(item=><button key={item.label} onClick={()=>onNavigate(item.nav,item.status)} style={{flex:1,padding:"0.85rem 0.5rem",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
-          <span style={{fontSize:"1.2rem"}}>{item.icon}</span>
-          <span style={{fontSize:"0.6rem",color:"var(--text3)"}}>{item.label}</span>
-        </button>)}
-      </div>
-    </div>
-  </div>;
-}
-
-function HomeScreen({user,units,onNavigate,onViewUnits}){
+function HomeScreen({user,units,isAdmin,onNavigate}){
   const userName=user?.user_metadata?.name||user?.email||"Technician";
   const isAdmin=user?.user_metadata?.role==="admin";
   const now=new Date();
@@ -1085,7 +982,7 @@ function HomeScreen({user,units,onNavigate,onViewUnits}){
     {/* Menu items */}
     <div style={{padding:"1.25rem",marginTop:"-1rem"}}>
       <div style={{background:"#fff",borderRadius:"var(--radius2)",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",overflow:"hidden",marginBottom:"1rem"}}>
-        {menuItems.map((item,i)=><div key={item.label} onClick={()=>onViewUnits(item.status)} style={{display:"flex",alignItems:"center",padding:"1rem 1.25rem",borderBottom:i<menuItems.length-1?"1px solid #f0f0f5":"none",cursor:"pointer",transition:"background 0.1s"}}
+        {menuItems.map((item,i)=><div key={item.label} onClick={()=>onNavigate('units',item.status)} style={{display:"flex",alignItems:"center",padding:"1rem 1.25rem",borderBottom:i<menuItems.length-1?"1px solid #f0f0f5":"none",cursor:"pointer",transition:"background 0.1s"}}
           onMouseEnter={e=>e.currentTarget.style.background="#f8f8fc"}
           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
           <div style={{width:"44px",height:"44px",borderRadius:"12px",background:item.color+"15",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem",flexShrink:0,marginRight:"1rem"}}>
@@ -1108,7 +1005,7 @@ function HomeScreen({user,units,onNavigate,onViewUnits}){
           {icon:"📊",label:"Dashboard",nav:"dashboard"},
           {icon:"🔧",label:"Field Tools",nav:"tools"},
           {icon:"⚙️",label:"All Units",nav:"units"},
-        ].map(item=><button key={item.label} onClick={()=>onNavigate(item.nav)} style={{background:"#fff",border:"none",borderRadius:"var(--radius)",padding:"0.85rem 0.5rem",cursor:"pointer",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+        ].map(item=><button key={item.label} onClick={()=>onNavigate(item.nav,null)} style={{background:"#fff",border:"none",borderRadius:"var(--radius)",padding:"0.85rem 0.5rem",cursor:"pointer",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
           <div style={{fontSize:"1.4rem",marginBottom:"0.3rem"}}>{item.icon}</div>
           <div style={{fontSize:"0.65rem",color:"#666",fontWeight:600}}>{item.label}</div>
         </button>)}
@@ -1249,7 +1146,7 @@ function App(){
         <div style={{fontSize:"0.62rem",color:"var(--text3)",marginTop:"2px",letterSpacing:"0.06em"}}>MAINTENANCE SYSTEM</div>
       </div>
       <div style={{padding:"0.75rem",flex:1}}>
-        {[{id:"home",icon:"🏠",label:"Home"},{id:"home",icon:"🏠",label:"Home"},{id:"units",icon:"⚙️",label:"Units",badge:criticalUnits>0?criticalUnits:null},{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"tools",icon:"🔧",label:"Field Tools"}].map(item=><button key={item.id} className={"nav-item"+(view===item.id?" active":"")} onClick={()=>{setView(item.id);if(item.id!=="units")setSelectedUnit(null);if(item.id==="units")setFilterStatus("All")}}>
+        {[{id:"home",icon:"🏠",label:"Home"},{id:"units",icon:"⚙️",label:"Units",badge:criticalUnits>0?criticalUnits:null},{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"tools",icon:"🔧",label:"Field Tools"}].map(item=><button key={item.id} className={"nav-item"+(view===item.id?" active":"")} onClick={()=>{setView(item.id);if(item.id!=="units")setSelectedUnit(null);if(item.id==="units")setFilterStatus("All")}}>
           <span>{item.icon}</span><span style={{flex:1}}>{item.label}</span>
           {item.badge&&<span style={{background:"var(--red)",color:"#fff",fontSize:"0.6rem",fontWeight:700,padding:"1px 6px",borderRadius:"99px"}}>{item.badge}</span>}
         </button>)}
@@ -1285,8 +1182,7 @@ function App(){
         {dbError&&<span style={{fontSize:"0.68rem",color:"var(--red)"}}>{dbError} <button onClick={loadUnits} style={{background:"none",border:"none",color:"var(--amber)",cursor:"pointer",fontSize:"0.68rem"}}>Retry</button></span>}
       </div>
       <div style={{flex:1,overflow:"hidden",display:"flex"}}>
-        {view==="home"&&<div style={{flex:1,overflowY:"auto"}}><HomeScreen user={user} units={units} isAdmin={isAdmin} onNavigate={(v,status)=>{setView(v);if(status)setFilterStatus(status);else setFilterStatus("All")}}/></div>}
-        {view==="home"&&<div style={{flex:1,overflowY:"auto"}}><HomeScreen user={user} units={units} onNavigate={v=>setView(v)} onViewUnits={status=>{setView("units");setQuickFilter(status);setSelectedUnit(null)}}/></div>}
+        {view==="home"&&<div style={{flex:1,overflowY:"auto"}}><HomeScreen user={user} units={units} isAdmin={isAdmin} onNavigate={(v,status)=>{setView(v);setQuickFilter(status||"");if(v!=="units")setSelectedUnit(null)}}/></div>}
         {view==="dashboard"&&<div style={{flex:1,overflowY:"auto",padding:"1.25rem"}}><Dashboard units={units}/></div>}
         {view==="tools"&&<div style={{flex:1,overflowY:"auto",padding:"1.25rem"}}>
           <div style={{maxWidth:"700px",margin:"0 auto"}}>
